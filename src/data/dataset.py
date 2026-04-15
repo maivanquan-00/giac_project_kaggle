@@ -1,13 +1,13 @@
 """
 dataset.py
 ----------
-Load 4 file đã processed từ data_processed/ và chia 80/20 (train+val / test).
+Load 4 file đã processed từ data_final/ và chia 80/20 (train+val / test).
 
 Cấu trúc file:
-  clean_labels.csv          : cột [Patient_ID, Cancer_Type, Clean_Subtype, Target_Label]
-  processed_gene.csv        : index=Patient_ID, columns=gene_names
-  processed_methylation.csv : index=Patient_ID, columns=CpG_names
-  processed_mirna.csv       : index=Patient_ID, columns=miRNA_names
+  final_labels.csv          : cột [Patient_ID, Cancer_Type, Clean_Subtype, Target_Label]
+  final_gene.csv            : index=Patient_ID, columns=gene_names
+  final_methylation.csv     : index=Patient_ID, columns=CpG_names
+  final_mirna.csv       : index=Patient_ID, columns=miRNA_names
 """
 
 import os
@@ -39,10 +39,10 @@ def build_datasets(cfg: dict, seed: int = 42):
     print("📂 Loading data từ:", root)
 
     # ── Load 4 file ──────────────────────────────────────────────────
-    labels = pd.read_csv(os.path.join(root, "clean_labels.csv"))
-    gene   = pd.read_csv(os.path.join(root, "processed_gene.csv"),          index_col=0)
-    meth   = pd.read_csv(os.path.join(root, "processed_methylation.csv"),   index_col=0)
-    mirna  = pd.read_csv(os.path.join(root, "processed_mirna.csv"),         index_col=0)
+    labels = pd.read_csv(os.path.join(root, "final_labels.csv"))
+    gene   = pd.read_csv(os.path.join(root, "final_gene.csv"),          index_col=0)
+    meth   = pd.read_csv(os.path.join(root, "final_methylation.csv"),   index_col=0)
+    mirna  = pd.read_csv(os.path.join(root, "final_mirna.csv"),         index_col=0)
 
     print(f"  Labels : {labels.shape}")
     print(f"  Gene   : {gene.shape}")

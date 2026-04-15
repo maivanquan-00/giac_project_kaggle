@@ -3,12 +3,12 @@
 # ============================================================
 
 data:
-  # ── Đường dẫn data_processed ──────────────────────────────
-  data_dir: "/content/drive/MyDrive/ĐATN_2025.2/data_processed"
-  #   clean_labels.csv          : Patient_ID, Cancer_Type, Clean_Subtype, Target_Label
-  #   processed_gene.csv        : index=Patient_ID, columns=gene_names
-  #   processed_methylation.csv : index=Patient_ID, columns=CpG_names
-  #   processed_mirna.csv       : index=Patient_ID, columns=miRNA_names
+  # ── Đường dẫn data_final ──────────────────────────────
+  data_dir: "/content/drive/MyDrive/ĐATN_2025.2/data_final"
+  #   final_labels.csv          : Patient_ID, Cancer_Type, Clean_Subtype, Target_Label
+  #   final_gene.csv            : index=Patient_ID, columns=gene_names
+  #   final_methylation.csv     : index=Patient_ID, columns=CpG_names
+  #   final_mirna.csv           : index=Patient_ID, columns=miRNA_names
 
   # ── Đường dẫn Heterogeneous Graph ─────────────────────────
   graph_dir: "/content/drive/MyDrive/ĐATN_2025.2/Heterogeneous_Graph"
