@@ -1,0 +1,70 @@
+# ============================================================
+#  Toàn bộ hyperparameter của project
+# ============================================================
+
+data:
+  # ── Đường dẫn data_processed ──────────────────────────────
+  data_dir: "/content/drive/MyDrive/ĐATN_2025.2/data_processed"
+  #   clean_labels.csv          : Patient_ID, Cancer_Type, Clean_Subtype, Target_Label
+  #   processed_gene.csv        : index=Patient_ID, columns=gene_names
+  #   processed_methylation.csv : index=Patient_ID, columns=CpG_names
+  #   processed_mirna.csv       : index=Patient_ID, columns=miRNA_names
+
+  # ── Đường dẫn Heterogeneous Graph ─────────────────────────
+  graph_dir: "/content/drive/MyDrive/ĐATN_2025.2/Heterogeneous_Graph"
+  #   graph_dir/
+  #     9606.protein.links.v12.0.txt    ← STRING PPI
+  #     9606.protein.aliases.v12.0.txt  ← map ENSP → gene symbol
+  #     9606.protein.info.v12.0.txt     ← gene info (backup mapping)
+  #     hsa_MTI.csv                     ← miRTarBase (miRNA → gene)
+  #     GIAC_main/
+  #       TCGA_emQTL_COAD.txt
+  #       TCGA_emQTL_ESCA.txt
+  #       TCGA_emQTL_READ.txt
+  #       TCGA_emQTL_STAD.txt
+  #       TCGA_hallmark_pathway_meQTL_COAD.txt  (chưa có cũng không sao)
+  #       TCGA_hallmark_pathway_meQTL_ESCA.txt
+  #       TCGA_hallmark_pathway_meQTL_READ.txt
+  #       TCGA_hallmark_pathway_meQTL_STAD.txt
+
+  cancer_types: ["COAD", "ESCA", "READ", "STAD"]
+
+graph:
+  emqtl_pval_threshold: 0.05
+  max_edges_per_node: 50
+  # STRING PPI: chỉ lấy cạnh có combined_score >= ngưỡng này
+  ppi_score_threshold: 700
+  use_ppi: true       # bật vì đã có file STRING
+  use_mirna: true     # bật vì đã có hsa_MTI.csv
+
+model:
+  hidden_dim: 256
+  gat_heads: 8
+  gat_layers: 2
+  gat_dropout: 0.1
+  cross_attn_heads: 32
+  sparsemax_alpha: 1.5
+  cross_attn_dropout: 0.1
+  num_classes: 5        # CIN=0, GS=1, MSI=2, HM-SNV=3, EBV=4
+  classifier_dropout: 0.3
+  final_dim: 128
+
+training:
+  epochs: 100
+  batch_size: 32
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-2
+  test_size: 0.2
+  focal_gamma: 2.0
+  focal_alpha: 1.0
+  lambda_modality: 0.01
+  lambda_frobenius: 0.01
+  patience: 15
+  seed: 42
+
+logging:
+  save_dir: "checkpoints/"
+  log_interval: 5
+
+interpretability:
+  top_k_features: 50
