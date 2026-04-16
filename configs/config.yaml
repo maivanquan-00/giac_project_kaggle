@@ -38,22 +38,22 @@ graph:
   use_mirna: true     # bật vì đã có hsa_MTI.csv
 
 model:
-  hidden_dim: 128
-  gat_heads: 4
+  hidden_dim: 256
+  gat_heads: 8
   gat_layers: 2
   gat_dropout: 0.3
-  cross_attn_heads: 8
+  cross_attn_heads: 32
   sparsemax_alpha: 1.0
   cross_attn_dropout: 0.4
   num_classes: 5        # CIN=0, GS=1, MSI=2, HM-SNV=3, EBV=4
   classifier_dropout: 0.5
-  final_dim: 64
+  final_dim: 128
 
 training:
   epochs: 100
   batch_size: 32
   learning_rate: 5.0e-5
-  weight_decay: 5.0e-5
+  weight_decay: 5.0e-3
   test_size: 0.2
   focal_gamma: 2.0
   focal_alpha: 1.0
