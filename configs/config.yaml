@@ -44,7 +44,7 @@ model:
   gat_dropout: 0.3
   cross_attn_heads: 8
   sparsemax_alpha: 1.0
-  cross_attn_dropout: 0.3
+  cross_attn_dropout: 0.4
   num_classes: 5        # CIN=0, GS=1, MSI=2, HM-SNV=3, EBV=4
   classifier_dropout: 0.5
   final_dim: 64
@@ -53,7 +53,7 @@ training:
   epochs: 100
   batch_size: 32
   learning_rate: 5.0e-5
-  weight_decay: 1.0e-4
+  weight_decay: 5.0e-5
   test_size: 0.2
   focal_gamma: 2.0
   focal_alpha: 1.0
