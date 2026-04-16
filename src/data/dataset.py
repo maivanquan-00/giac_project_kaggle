@@ -55,6 +55,12 @@ def build_datasets(cfg: dict, seed: int = 42):
     X_gene  = gene.values.astype(np.float32)   # (N, F_gene)
     X_meth  = meth.values.astype(np.float32)   # (N, F_meth)
     X_mirna = mirna.values.astype(np.float32)  # (N, F_mirna)
+
+    # THÊM 3 DÒNG NÀY ĐỂ CHUẨN HÓA DỮ LIỆU (Đưa Mean về 0, Std về 1)
+    X_gene = (X_gene - X_gene.mean(axis=0)) / (X_gene.std(axis=0) + 1e-8)
+    X_meth = (X_meth - X_meth.mean(axis=0)) / (X_meth.std(axis=0) + 1e-8)
+    X_mirna = (X_mirna - X_mirna.mean(axis=0)) / (X_mirna.std(axis=0) + 1e-8)
+    
     y       = labels["Target_Label"].values.astype(np.int64)  # (N,)
 
     N = len(y)

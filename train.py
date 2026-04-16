@@ -6,6 +6,7 @@ Script chính để train model. Chạy trên Colab:
   !python train.py --config configs/config.yaml
 """
 
+import math
 import argparse
 import yaml
 import torch
@@ -109,7 +110,7 @@ def main():
     total_samples = sum(class_counts)
     num_classes = len(class_counts)
     
-    weights = [total_samples / (num_classes * c) for c in class_counts]
+    weights = [math.sqrt(total_samples / (num_classes * c)) for c in class_counts]
     class_weights = torch.tensor(weights, dtype=torch.float).to(device)
     
     # Ép model sử dụng Loss Function có chứa trọng số này
