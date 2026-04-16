@@ -17,6 +17,7 @@ Xây dựng Heterogeneous Graph từ các file thực tế:
     'mirna' : miRNA nodes (F_mirna nodes)
 """
 
+import re
 import os
 import numpy as np
 import pandas as pd
@@ -322,51 +323,68 @@ def _load_mirna_edges(
     mirna_idx: dict,
     gene_idx: dict,
 ) -> torch.Tensor | None:
-    """
-    hsa_MTI.csv format (miRTarBase):
-      miRNA  Target Gene  Species(miRNA)  Species(Target Gene)  Experiments  ...
-    Cột quan trọng: 'miRNA' và 'Target Gene'
-    """
     if not os.path.exists(mti_file):
         return None
 
     print("   Parsing hsa_MTI.csv...", end=" ", flush=True)
-
     df = pd.read_csv(mti_file)
 
     # Tự động detect tên cột
     mirna_col = _find_col(df.columns.tolist(), ["miRNA", "mirna", "mature_mirna"])
-    gene_col  = _find_col(df.columns.tolist(), ["Target Gene", "target_gene",
-                                                  "gene_symbol", "Gene Symbol"])
+    gene_col  = _find_col(df.columns.tolist(), ["Target Gene", "target_gene", "gene_symbol", "Gene Symbol"])
+    
     if not mirna_col or not gene_col:
         print(f"không nhận ra cột (found: {df.columns.tolist()[:5]})")
         return None
 
+    # ==========================================================
+    # BƯỚC 1: XÂY DỰNG TỪ ĐIỂN ÁNH XẠ TCGA (Precursor -> Index)
+    # ==========================================================
+    base_to_tcga = {}
+    for tcga_name, idx in mirna_idx.items():
+        base_name = tcga_name.lower().strip()
+        # Xóa các hậu tố vị trí gene như -1, -2 (ví dụ: hsa-let-7a-1 -> hsa-let-7a)
+        base_name = re.sub(r'-\d+$', '', base_name)
+        
+        if base_name not in base_to_tcga:
+            base_to_tcga[base_name] = []
+        base_to_tcga[base_name].append(idx)
+
+    # ==========================================================
+    # BƯỚC 2: QUÉT FILE MIRTARBASE VÀ MAPPING (Mature -> Precursor)
+    # ==========================================================
     src_list, dst_list = [], []
     seen = set()
 
-    # Chỉ lọc ra 2 cột cần thiết, set name=None để trả về tuple thường
     df_filtered = df[[mirna_col, gene_col]]
     
     for row in df_filtered.itertuples(index=False, name=None):
-        m = str(row[0]).strip() # mirna_col luôn ở index 0
-        g = str(row[1]).strip() # gene_col luôn ở index 1
+        # Ép về chữ thường (hsa-miR-122-5p -> hsa-mir-122-5p)
+        m = str(row[0]).strip().lower() 
+        g = str(row[1]).strip().upper() # Gene Symbol thường viết hoa
         
-        if m not in mirna_idx or g not in gene_idx:
+        # Xóa hậu tố sợi trưởng thành -5p, -3p (hsa-mir-122-5p -> hsa-mir-122)
+        m_base = re.sub(r'-[35]p$', '', m)
+        
+        # Nếu Gene không có trong model, hoặc miRNA không map được thì bỏ qua
+        if g not in gene_idx or m_base not in base_to_tcga:
             continue
-        key = (mirna_idx[m], gene_idx[g])
-        if key in seen:
-            continue
-        seen.add(key)
-        src_list.append(mirna_idx[m])
-        dst_list.append(gene_idx[g])
+            
+        # Một Mature miRNA có thể bắt nguồn từ nhiều Precursor (VD: let-7a-1, let-7a-2)
+        # Ta sẽ nối cạnh cho TẤT CẢ các Precursor tạo ra nó
+        for m_idx in base_to_tcga[m_base]:
+            key = (m_idx, gene_idx[g])
+            if key in seen:
+                continue
+            seen.add(key)
+            src_list.append(m_idx)
+            dst_list.append(gene_idx[g])
 
     print(f"{len(src_list):,} edges")
 
     if not src_list:
         return None
     return torch.tensor([src_list, dst_list], dtype=torch.long)
-
 
 # ─────────────────────────────────────────────
 #  Helpers
