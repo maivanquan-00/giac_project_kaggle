@@ -26,7 +26,7 @@ giac_project/
 
 ### Chạy trên Colab
 ```python
-!git clone https://github.com/YOUR_USERNAME/giac_project.git
+!git clone https://github.com/maivanquan-00/giac_project_colab
 %cd giac_project
 !pip install -r requirements.txt
 !python train.py --config configs/config.yaml

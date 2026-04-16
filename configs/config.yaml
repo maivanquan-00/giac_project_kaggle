@@ -4,14 +4,14 @@
 
 data:
   # ── Đường dẫn data_final ──────────────────────────────
-  data_dir: "/content/drive/MyDrive/ĐATN_2025.2/data_final"
+  data_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
   #   final_labels.csv          : Patient_ID, Cancer_Type, Clean_Subtype, Target_Label
   #   final_gene.csv            : index=Patient_ID, columns=gene_names
   #   final_methylation.csv     : index=Patient_ID, columns=CpG_names
   #   final_mirna.csv           : index=Patient_ID, columns=miRNA_names
 
   # ── Đường dẫn Heterogeneous Graph ─────────────────────────
-  graph_dir: "/content/drive/MyDrive/ĐATN_2025.2/Heterogeneous_Graph"
+  graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
   #   graph_dir/
   #     9606.protein.links.v12.0.txt    ← STRING PPI
   #     9606.protein.aliases.v12.0.txt  ← map ENSP → gene symbol
@@ -63,7 +63,7 @@ training:
   seed: 42
 
 logging:
-  save_dir: "checkpoints/"
+  save_dir: "/kaggle/working/checkpoints/"
   log_interval: 5
 
 interpretability:
