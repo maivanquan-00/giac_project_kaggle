@@ -66,12 +66,13 @@ class SparseMultiheadCrossAttention(nn.Module):
 
         # Learnable modality weights (như MoXGATE gốc)
         # Khởi tạo đều = 1/3, học trong quá trình training
-        self.modality_logits = nn.Parameter(torch.zeros(3))
+        self.modality_logits = nn.Parameter(torch.randn(3) * 0.01)
 
     @property
     def modality_weights(self) -> torch.Tensor:
         """Trả về w = softmax(logits) để đảm bảo sum=1."""
-        return F.softmax(self.modality_logits, dim=0)  # (3,)
+        temperature = 0.1
+        return F.softmax(self.modality_logits / temperature, dim=0)  # (3,)
 
     def forward(
         self,

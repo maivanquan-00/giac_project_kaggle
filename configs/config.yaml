@@ -57,7 +57,7 @@ training:
   test_size: 0.2
   focal_gamma: 2.0
   focal_alpha: 1.0
-  lambda_modality: 0.01
+  lambda_modality: 0.00
   lambda_frobenius: 0.01
   patience: 15
   seed: 42
