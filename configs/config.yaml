@@ -41,19 +41,19 @@ model:
   hidden_dim: 256
   gat_heads: 8
   gat_layers: 2
-  gat_dropout: 0.1
+  gat_dropout: 0.4
   cross_attn_heads: 32
-  sparsemax_alpha: 1.5
-  cross_attn_dropout: 0.1
+  sparsemax_alpha: 1.0
+  cross_attn_dropout: 0.3
   num_classes: 5        # CIN=0, GS=1, MSI=2, HM-SNV=3, EBV=4
-  classifier_dropout: 0.3
+  classifier_dropout: 0.5
   final_dim: 128
 
 training:
   epochs: 100
   batch_size: 32
   learning_rate: 5.0e-5
-  weight_decay: 1.0e-4
+  weight_decay: 5.0e-5
   test_size: 0.2
   focal_gamma: 2.0
   focal_alpha: 1.0
