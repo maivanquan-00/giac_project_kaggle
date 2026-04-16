@@ -154,15 +154,30 @@ def _load_emqtl_edges(
         print(f"   Parsing emQTL {ct}... ", end="", flush=True)
         count_before = len(src_list)
 
+        # print(f"   [Debug] Sample CpG in node list : {list(cpg_idx.keys())[:3]}")
+        # print(f"   [Debug] Sample Gene in node list: {list(gene_idx.keys())[:3]}")
+        # debug_printed = False
+
         for chunk in pd.read_csv(
             fpath, sep="\t", chunksize=200_000,
             usecols=[cpg_col, gene_col, pval_col],
             dtype={cpg_col: str, gene_col: str, pval_col: float},
         ):
-            chunk = chunk[chunk[pval_col] < pval_thresh]
-            for row in chunk.itertuples(index=False):
-                c_name = getattr(row, cpg_col)
-                g_name = getattr(row, gene_col)
+            # 1. Lọc theo p-value
+            chunk_filtered = chunk[chunk[pval_col] < pval_thresh]
+            
+            # 2. Chọn đúng 2 cột tạo cạnh và cố định thứ tự để truy cập bằng index
+            chunk_edges = chunk_filtered[[cpg_col, gene_col]]
+            
+            # 3. Thêm name=None để trả về tuple thường, truy cập an toàn bằng row[0], row[1]
+            for row in chunk_edges.itertuples(index=False, name=None):
+                c_name = str(row[0])
+                g_name = str(row[1])
+                
+                # if not debug_printed:
+                #     print(f"   [Debug] Data from file -> cpg: '{c_name}', gene: '{g_name}'")
+                #     debug_printed = True
+                    
                 if c_name not in cpg_idx or g_name not in gene_idx:
                     continue
                 c_i = cpg_idx[c_name]
@@ -207,41 +222,78 @@ def _load_ppi_edges(
 
     print("   Building ENSP→symbol map từ alias file...", end=" ", flush=True)
 
-    # Đọc alias file — giữ lại các alias từ nguồn gene symbol
+    # # Đọc alias file — giữ lại các alias từ nguồn gene symbol
+    # alias_df = pd.read_csv(alias_file, sep="\t", comment="#",
+    #                        names=["protein_id", "alias", "source"])
+    # # Ưu tiên nguồn BioMart_HUGO hoặc HGNC
+    # preferred = alias_df[alias_df["source"].str.contains(
+    #     "BioMart_HUGO|HGNC|gene_name", case=False, na=False
+    # )]
+    # # Nếu không có nguồn ưu tiên, lấy tất cả
+    # if len(preferred) == 0:
+    #     preferred = alias_df
+
+    # # Tạo map: ENSP_full_id → gene_symbol (lấy alias đầu tiên cho mỗi protein)
+    # ensp_to_gene = (
+    #     preferred.groupby("protein_id")["alias"]
+    #     .first()
+    #     .astype(str)       # Ép kiểu về chuỗi
+    #     .str.strip()       # Xóa khoảng trắng 2 đầu
+    #     .str.upper()       # ÉP TOÀN BỘ THÀNH CHỮ IN HOA
+    #     .to_dict()
+    # )
+    # print(f"{len(ensp_to_gene):,} proteins mapped")
+
+    # Đọc alias file
     alias_df = pd.read_csv(alias_file, sep="\t", comment="#",
                            names=["protein_id", "alias", "source"])
-    # Ưu tiên nguồn BioMart_HUGO hoặc HGNC
-    preferred = alias_df[alias_df["source"].str.contains(
-        "BioMart_HUGO|HGNC|gene_name", case=False, na=False
-    )]
-    # Nếu không có nguồn ưu tiên, lấy tất cả
-    if len(preferred) == 0:
-        preferred = alias_df
+    
+    # 1. Ép chuỗi và in hoa toàn bộ cột alias
+    alias_df["alias_upper"] = alias_df["alias"].astype(str).str.strip().str.upper()
+    
+    # 2. CHỈ lọc những alias khớp với tập Gene của bạn
+    valid_genes = set(gene_idx.keys())
+    preferred = alias_df[alias_df["alias_upper"].isin(valid_genes)]
 
-    # Tạo map: ENSP_full_id → gene_symbol (lấy alias đầu tiên cho mỗi protein)
+    # 3. Tạo dictionary
     ensp_to_gene = (
-        preferred.groupby("protein_id")["alias"]
+        preferred.groupby("protein_id")["alias_upper"]
         .first()
         .to_dict()
     )
     print(f"{len(ensp_to_gene):,} proteins mapped")
+
+    # BẠN THÊM ĐOẠN DEBUG NÀY VÀO ĐÂY NHÉ:
+    print(f"   [Debug PPI] 3 ENSP keys in dict: {list(ensp_to_gene.keys())[:3]}")
+    print(f"   [Debug PPI] 3 Symbols in dict  : {list(ensp_to_gene.values())[:3]}")
+    print(f"   [Debug PPI] 3 Node Gene list   : {list(gene_idx.keys())[:3]}")
 
     # Đọc links file theo chunk
     print("   Parsing STRING links...", end=" ", flush=True)
     src_list, dst_list = [], []
     seen = set()  # tránh duplicate
 
+    debug_ppi_printed = False
+
     for chunk in pd.read_csv(
         links_file, sep=" ", chunksize=500_000,
         dtype={"protein1": str, "protein2": str, "combined_score": int},
     ):
         chunk = chunk[chunk["combined_score"] >= score_thresh]
-        for row in chunk.itertuples(index=False):
-            p1 = row.protein1  # "9606.ENSP00000..."
-            p2 = row.protein2
+        
+        # Thêm name=None để tăng tốc độ và tránh lỗi namedtuple như đã làm ở emQTL
+        for row in chunk.itertuples(index=False, name=None):
+            p1 = row[0]
+            p2 = row[1]
 
-            g1 = ensp_to_gene.get(p1, "")
-            g2 = ensp_to_gene.get(p2, "")
+            # IN RA ĐỂ SO SÁNH (chỉ in 1 lần)
+            if not debug_ppi_printed:
+                print(f"   [Debug PPI] Raw File - p1: '{p1}', p2: '{p2}'")
+                debug_ppi_printed = True
+
+            # Khi lấy ra cũng cần strip và upper để đảm bảo khớp 100%
+            g1 = ensp_to_gene.get(p1, "").strip().upper()
+            g2 = ensp_to_gene.get(p2, "").strip().upper()
 
             if g1 not in gene_idx or g2 not in gene_idx:
                 continue
@@ -293,9 +345,13 @@ def _load_mirna_edges(
     src_list, dst_list = [], []
     seen = set()
 
-    for row in df[[mirna_col, gene_col]].itertuples(index=False):
-        m = str(getattr(row, mirna_col)).strip()
-        g = str(getattr(row, gene_col)).strip()
+    # Chỉ lọc ra 2 cột cần thiết, set name=None để trả về tuple thường
+    df_filtered = df[[mirna_col, gene_col]]
+    
+    for row in df_filtered.itertuples(index=False, name=None):
+        m = str(row[0]).strip() # mirna_col luôn ở index 0
+        g = str(row[1]).strip() # gene_col luôn ở index 1
+        
         if m not in mirna_idx or g not in gene_idx:
             continue
         key = (mirna_idx[m], gene_idx[g])

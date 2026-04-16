@@ -102,6 +102,20 @@ def main():
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"\n🧠 Model parameters: {n_params:,}")
 
+    # ================= BẠN THÊM ĐOẠN CODE NÀY VÀO ĐÂY =================
+    # Tính toán trọng số để trừng phạt model khi đoán sai các class hiếm
+    # Phân bố của bạn: {0: 624, 1: 108, 2: 136, 3: 19, 4: 30}
+    class_counts = [624, 108, 136, 19, 30]
+    total_samples = sum(class_counts)
+    num_classes = len(class_counts)
+    
+    weights = [total_samples / (num_classes * c) for c in class_counts]
+    class_weights = torch.tensor(weights, dtype=torch.float).to(device)
+    
+    # Ép model sử dụng Loss Function có chứa trọng số này
+    model.criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    # ==================================================================
+    
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr           = cfg["training"]["learning_rate"],

@@ -31,7 +31,7 @@ def build_datasets(cfg: dict, seed: int = 42):
 
     # ── Load 4 file — Patient ID là index (cột đầu tiên) của tất cả file ──
     labels = pd.read_csv(os.path.join(root, "final_labels.csv"),            index_col=0)
-    gene   = pd.read_csv(os.path.join(root, "final_gene.csv"),          index_col=0)
+    gene   = pd.read_csv(os.path.join(root, "final_gene_symbol.csv"),          index_col=0)
     meth   = pd.read_csv(os.path.join(root, "final_methylation.csv"),   index_col=0)
     mirna  = pd.read_csv(os.path.join(root, "final_mirna.csv"),         index_col=0)
 
