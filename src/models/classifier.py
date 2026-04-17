@@ -35,20 +35,19 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
 
         if isinstance(alpha, (int, float)):
-            # Uniform alpha
-            self.alpha = torch.ones(num_classes) * alpha
+            alpha_tensor = torch.ones(num_classes, dtype=torch.float32) * alpha
         else:
-            # Per-class alpha (list)
-            self.alpha = torch.tensor(alpha, dtype=torch.float)
+            alpha_tensor = torch.tensor(alpha, dtype=torch.float32)
+        self.register_buffer("alpha", alpha_tensor)
+
+    def set_alpha(self, alpha: torch.Tensor):
+        self.alpha.copy_(alpha.to(self.alpha.device, dtype=self.alpha.dtype))
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """
         logits  : (B, num_classes) — raw output từ classifier
         targets : (B,) — class indices 0..4
         """
-        device = logits.device
-        alpha  = self.alpha.to(device)
-
         # Tính cross-entropy per sample
         log_probs = F.log_softmax(logits, dim=-1)   # (B, C)
         probs     = log_probs.exp()                  # (B, C)
@@ -58,7 +57,7 @@ class FocalLoss(nn.Module):
         pt     = probs.gather(1, targets.unsqueeze(1)).squeeze(1)      # (B,)
 
         # Alpha per sample
-        alpha_t = alpha[targets]  # (B,)
+        alpha_t = self.alpha[targets]  # (B,)
 
         # Focal weight
         focal_weight = (1.0 - pt) ** self.gamma  # (B,)
@@ -122,8 +121,14 @@ def frobenius_regularization_loss(
     L_reg2 = lambda2 * ||W_c||_F^2
     Frobenius norm regularization trên weight matrices của cross-attention.
     """
-    reg = torch.tensor(0.0)
+    reg = None
     for name, param in model.named_parameters():
         if param_prefix in name and param.requires_grad:
-            reg = reg + param.norm("fro") ** 2
+            term = param.norm("fro") ** 2
+            reg = term if reg is None else reg + term
+    if reg is None:
+        first_param = next(model.parameters(), None)
+        if first_param is None:
+            return torch.tensor(0.0)
+        return first_param.new_tensor(0.0)
     return lambda2 * reg

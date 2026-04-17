@@ -42,14 +42,17 @@ def print_metrics(metrics: dict, split: str = ""):
     )
 
 
-def save_checkpoint(model, optimizer, epoch, metrics, path):
+def save_checkpoint(model, optimizer, epoch, metrics, path, extra_state=None):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    torch.save({
+    state = {
         "epoch":     epoch,
         "model":     model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "metrics":   metrics,
-    }, path)
+    }
+    if extra_state:
+        state.update(extra_state)
+    torch.save(state, path)
     print(f"  💾 Saved checkpoint: {path}")
 
 

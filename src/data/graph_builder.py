@@ -74,12 +74,14 @@ def build_hetero_graph(
     )
     if cpg_gene_edges is not None:
         graph["cpg", "regulates", "gene"].edge_index = cpg_gene_edges
+        graph["gene", "regulated_by", "cpg"].edge_index = cpg_gene_edges.flip(0)
         print(f"   CpG→Gene edges  : {cpg_gene_edges.shape[1]:,}")
     else:
         print("   ⚠️  emQTL: không có cạnh → dùng self-loop fallback")
         graph["cpg", "regulates", "gene"].edge_index = _self_loop_edges(
             len(cpg_names), len(gene_names)
         )
+        graph["gene", "regulated_by", "cpg"].edge_index = graph["cpg", "regulates", "gene"].edge_index.flip(0)
 
     # ── Cạnh 2: Gene ↔ Gene  (STRING PPI) ────────────────────────────
     if cfg_graph.get("use_ppi", True):
@@ -107,9 +109,14 @@ def build_hetero_graph(
         )
         if mirna_edges is not None:
             graph["mirna", "targets", "gene"].edge_index = mirna_edges
+            graph["gene", "targeted_by", "mirna"].edge_index = mirna_edges.flip(0)
             print(f"   miRNA→Gene edges: {mirna_edges.shape[1]:,}")
         else:
             print("   ⚠️  miRTarBase: không đọc được file")
+
+    graph["gene", "self_loop", "gene"].edge_index = _identity_edges(len(gene_names))
+    graph["cpg", "self_loop", "cpg"].edge_index = _identity_edges(len(cpg_names))
+    graph["mirna", "self_loop", "mirna"].edge_index = _identity_edges(len(mirna_names))
 
     return graph.to(device)
 
@@ -405,3 +412,8 @@ def _self_loop_edges(n_src: int, n_dst: int, n: int = 500) -> torch.Tensor:
     src = rng.integers(0, n_src, n)
     dst = rng.integers(0, n_dst, n)
     return torch.tensor([src.tolist(), dst.tolist()], dtype=torch.long)
+
+
+def _identity_edges(n_nodes: int) -> torch.Tensor:
+    idx = torch.arange(n_nodes, dtype=torch.long)
+    return torch.stack([idx, idx], dim=0)

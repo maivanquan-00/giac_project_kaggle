@@ -167,21 +167,10 @@ class PatientSparseAttention(nn.Module):
         super().__init__()
         self.alpha = alpha
 
-        # Scoring function: feature → scalar score
-        # Dùng 2-layer MLP để tính importance score cho mỗi feature
-        self.gene_scorer  = self._make_scorer(dims["gene"],  hidden_dim)
-        self.cpg_scorer   = self._make_scorer(dims["meth"],  hidden_dim)
-        self.mirna_scorer = self._make_scorer(dims["mirna"], hidden_dim)
-
-    def _make_scorer(self, in_dim: int, hidden: int) -> nn.Module:
-        """
-        MLP: (in_dim,) → (in_dim,) scalar scores per feature
-        """
-        return nn.Sequential(
-            nn.Linear(in_dim, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, in_dim),  # output: 1 score per feature
-        )
+        # Score trực tiếp từng feature sau LayerNorm để giữ module nhẹ.
+        self.gene_scorer = FeatureSparseScorer(dims["gene"])
+        self.cpg_scorer = FeatureSparseScorer(dims["meth"])
+        self.mirna_scorer = FeatureSparseScorer(dims["mirna"])
 
     def forward(self, batch: dict) -> dict:
         """
@@ -207,6 +196,20 @@ class PatientSparseAttention(nn.Module):
             sparse_weights[name] = w
 
         return sparse_weights
+
+
+class FeatureSparseScorer(nn.Module):
+    """A lightweight per-feature scorer with O(F) trainable parameters."""
+
+    def __init__(self, in_dim: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(in_dim)
+        self.scale = nn.Parameter(torch.ones(in_dim))
+        self.bias = nn.Parameter(torch.zeros(in_dim))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.norm(x)
+        return x * self.scale + self.bias
 
 
 def get_top_k_features(

@@ -116,7 +116,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ── Data & Graph ─────────────────────────────────────────────────
-    datasets, feature_names, dims = build_datasets(cfg["data"], cfg["training"]["seed"])
+    datasets, feature_names, dims, _ = build_datasets(cfg["data"], cfg["training"]["seed"])
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
 
     loader = DataLoader(datasets[args.split], batch_size=32, shuffle=False)
