@@ -9,6 +9,7 @@ import random
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score, classification_report
 
@@ -42,6 +43,34 @@ def print_metrics(metrics: dict, split: str = ""):
         f"R={metrics['recall']:.4f}  "
         f"F1={metrics['f1']:.4f}"
     )
+
+
+def print_classification_report(y_true, y_pred, class_names=None):
+    """In classification report chi tiết per-class P/R/F1."""
+    print(classification_report(
+        y_true, y_pred,
+        target_names=class_names,
+        zero_division=0,
+        digits=4,
+    ))
+
+
+def save_confusion_matrix_csv(y_true, y_pred, path, class_names=None):
+    """Lưu confusion matrix dạng số tuyệt đối ra CSV."""
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    n_classes = max(int(y_true.max()), int(y_pred.max())) + 1
+    if class_names is None:
+        class_names = [f"Class_{i}" for i in range(n_classes)]
+    cm = confusion_matrix(y_true, y_pred, labels=np.arange(n_classes))
+    df = pd.DataFrame(
+        cm,
+        index=[f"True_{n}" for n in class_names],
+        columns=[f"Pred_{n}" for n in class_names],
+    )
+    ensure_dir(os.path.dirname(path))
+    df.to_csv(path)
+    print(f"  📄 Confusion matrix (absolute) saved: {path}")
 
 
 def ensure_dir(path: str):

@@ -230,28 +230,6 @@ def _load_ppi_edges(
 
     print("   Building ENSP→symbol map từ alias file...", end=" ", flush=True)
 
-    # # Đọc alias file — giữ lại các alias từ nguồn gene symbol
-    # alias_df = pd.read_csv(alias_file, sep="\t", comment="#",
-    #                        names=["protein_id", "alias", "source"])
-    # # Ưu tiên nguồn BioMart_HUGO hoặc HGNC
-    # preferred = alias_df[alias_df["source"].str.contains(
-    #     "BioMart_HUGO|HGNC|gene_name", case=False, na=False
-    # )]
-    # # Nếu không có nguồn ưu tiên, lấy tất cả
-    # if len(preferred) == 0:
-    #     preferred = alias_df
-
-    # # Tạo map: ENSP_full_id → gene_symbol (lấy alias đầu tiên cho mỗi protein)
-    # ensp_to_gene = (
-    #     preferred.groupby("protein_id")["alias"]
-    #     .first()
-    #     .astype(str)       # Ép kiểu về chuỗi
-    #     .str.strip()       # Xóa khoảng trắng 2 đầu
-    #     .str.upper()       # ÉP TOÀN BỘ THÀNH CHỮ IN HOA
-    #     .to_dict()
-    # )
-    # print(f"{len(ensp_to_gene):,} proteins mapped")
-
     # Đọc alias file
     alias_df = pd.read_csv(alias_file, sep="\t", comment="#",
                            names=["protein_id", "alias", "source"])
@@ -271,11 +249,6 @@ def _load_ppi_edges(
     )
     print(f"{len(ensp_to_gene):,} proteins mapped")
 
-    # # BẠN THÊM ĐOẠN DEBUG NÀY VÀO ĐÂY NHÉ:
-    # print(f"   [Debug PPI] 3 ENSP keys in dict: {list(ensp_to_gene.keys())[:3]}")
-    # print(f"   [Debug PPI] 3 Symbols in dict  : {list(ensp_to_gene.values())[:3]}")
-    # print(f"   [Debug PPI] 3 Node Gene list   : {list(gene_idx.keys())[:3]}")
-
     # Đọc links file theo chunk
     print("   Parsing STRING links...", end=" ", flush=True)
     src_list, dst_list = [], []
@@ -293,11 +266,6 @@ def _load_ppi_edges(
         for row in chunk.itertuples(index=False, name=None):
             p1 = row[0]
             p2 = row[1]
-
-            # # IN RA ĐỂ SO SÁNH (chỉ in 1 lần)
-            # if not debug_ppi_printed:
-            #     print(f"   [Debug PPI] Raw File - p1: '{p1}', p2: '{p2}'")
-            #     debug_ppi_printed = True
 
             # Khi lấy ra cũng cần strip và upper để đảm bảo khớp 100%
             g1 = ensp_to_gene.get(p1, "").strip().upper()

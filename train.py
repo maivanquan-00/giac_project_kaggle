@@ -23,8 +23,10 @@ from src.utils import (
     plot_cv_metrics,
     plot_split_class_distribution,
     plot_training_curves,
+    print_classification_report,
     print_metrics,
     save_checkpoint,
+    save_confusion_matrix_csv,
     set_seed,
 )
 
@@ -78,6 +80,24 @@ def eval_epoch(model, loader, graph, device, return_predictions: bool = False):
     if return_predictions:
         return metrics, all_labels, all_preds
     return metrics
+
+
+@torch.no_grad()
+def collect_gate_stats(model, loader, graph, device):
+    """Thu thập patient gate weights từ test set để kiểm tra fusion có hoạt động."""
+    model.eval()
+    all_gates = []
+    for batch in loader:
+        batch = {k: v.to(device) for k, v in batch.items()}
+        _, _, weights = model(batch, graph, return_interpretability=True)
+        all_gates.append(weights["patient"].cpu())
+    gates = torch.cat(all_gates, dim=0)  # (N, 3)
+    return {
+        "mean": gates.mean(dim=0).tolist(),
+        "std":  gates.std(dim=0).tolist(),
+        "min":  gates.min(dim=0).values.tolist(),
+        "max":  gates.max(dim=0).values.tolist(),
+    }
 
 
 def make_loaders(datasets: dict, train_batch_size: int):
@@ -212,6 +232,29 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]],
         normalize=True,
     )
+
+    # ── A1: Per-class Classification Report ───────────────────────
+    print(f"\n📋 Classification Report - {fold_name}")
+    print_classification_report(
+        test_labels, test_preds,
+        class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]],
+    )
+    save_confusion_matrix_csv(
+        test_labels, test_preds,
+        path=os.path.join(viz_dir, "confusion_matrix_test_absolute.csv"),
+        class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]],
+    )
+
+    # ── A3: Patient Gate Statistics ────────────────────────────────
+    gate_stats = collect_gate_stats(model, test_loader, graph, device)
+    print(f"\n🔍 Patient Gate Statistics - {fold_name}")
+    for i, name in enumerate(["gene", "meth", "mirna"]):
+        print(
+            f"   {name:5s}: mean={gate_stats['mean'][i]:.4f}  "
+            f"std={gate_stats['std'][i]:.4f}  "
+            f"min={gate_stats['min'][i]:.4f}  "
+            f"max={gate_stats['max'][i]:.4f}"
+        )
 
     return {
         "fold": fold_name,
