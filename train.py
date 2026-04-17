@@ -15,7 +15,21 @@ import yaml
 from src.data.dataset import build_cv_datasets, build_datasets
 from src.data.graph_builder import build_hetero_graph
 from src.model import GIACModel
-from src.utils import EarlyStopping, compute_metrics, print_metrics, save_checkpoint, set_seed
+from src.utils import (
+    EarlyStopping,
+    compute_metrics,
+    ensure_dir,
+    plot_confusion_matrix_figure,
+    plot_cv_metrics,
+    plot_split_class_distribution,
+    plot_training_curves,
+    print_metrics,
+    save_checkpoint,
+    set_seed,
+)
+
+
+SUBTYPE_NAMES = ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
 
 
 def parse_args():
@@ -50,7 +64,7 @@ def train_epoch(model, loader, optimizer, graph, device):
 
 
 @torch.no_grad()
-def eval_epoch(model, loader, graph, device):
+def eval_epoch(model, loader, graph, device, return_predictions: bool = False):
     model.eval()
     all_preds, all_labels = [], []
 
@@ -60,7 +74,10 @@ def eval_epoch(model, loader, graph, device):
         all_preds.extend(logits.argmax(dim=-1).cpu().tolist())
         all_labels.extend(batch["label"].cpu().tolist())
 
-    return compute_metrics(all_labels, all_preds)
+    metrics = compute_metrics(all_labels, all_preds)
+    if return_predictions:
+        return metrics, all_labels, all_preds
+    return metrics
 
 
 def make_loaders(datasets: dict, train_batch_size: int):
@@ -112,13 +129,30 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
 
     best_val_f1 = 0.0
     save_dir = cfg["logging"]["save_dir"]
+    viz_dir = os.path.join(save_dir, "visualizations", fold_name.lower().replace(" ", "_"))
+    ensure_dir(viz_dir)
     ckpt_name = "best_model.pt" if fold_name == "Single split" else f"best_model_{fold_name.lower().replace(' ', '_')}.pt"
     ckpt_path = os.path.join(save_dir, ckpt_name)
+    history = {"train_loss": [], "train_f1": [], "val_f1": []}
+
+    plot_split_class_distribution(
+        {
+            "train": datasets["train"].label.cpu().numpy(),
+            "val": datasets["val"].label.cpu().numpy(),
+            "test": datasets["test"].label.cpu().numpy(),
+        },
+        path=os.path.join(viz_dir, "class_distribution.png"),
+        title=f"{fold_name} - Class Distribution",
+        class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]],
+    )
 
     for epoch in range(1, cfg["training"]["epochs"] + 1):
         train_metrics = train_epoch(model, train_loader, optimizer, graph, device)
         val_metrics = eval_epoch(model, val_loader, graph, device)
         scheduler.step()
+        history["train_loss"].append(train_metrics["loss"])
+        history["train_f1"].append(train_metrics["f1"])
+        history["val_f1"].append(val_metrics["f1"])
 
         if epoch % cfg["logging"]["log_interval"] == 0 or epoch == 1:
             print(f"{fold_name} | Epoch {epoch:3d}/{cfg['training']['epochs']}")
@@ -146,6 +180,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
                     "dims": dims,
                     "fold_name": fold_name,
                     "config": cfg,
+                    "history": history,
                 },
             )
 
@@ -155,18 +190,35 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
 
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
-    test_metrics = eval_epoch(model, test_loader, graph, device)
+    test_metrics, test_labels, test_preds = eval_epoch(
+        model, test_loader, graph, device, return_predictions=True
+    )
 
     print(f"\n📊 Đánh giá trên Test set - {fold_name}")
     print_metrics(test_metrics, "Test ")
     print(f"✅ Best val F1: {best_val_f1:.4f}")
     print(f"✅ Test F1:     {test_metrics['f1']:.4f}")
 
+    plot_training_curves(
+        history,
+        path=os.path.join(viz_dir, "training_curves.png"),
+        title=fold_name,
+    )
+    plot_confusion_matrix_figure(
+        test_labels,
+        test_preds,
+        path=os.path.join(viz_dir, "confusion_matrix_test.png"),
+        title=f"{fold_name} - Test Confusion Matrix",
+        class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]],
+        normalize=True,
+    )
+
     return {
         "fold": fold_name,
         "best_val_f1": best_val_f1,
         "test_metrics": test_metrics,
         "checkpoint": ckpt_path,
+        "viz_dir": viz_dir,
     }
 
 
@@ -212,6 +264,11 @@ def main():
                 )
             )
         summarize_cv(results)
+        plot_cv_metrics(
+            results,
+            path=os.path.join(cfg["logging"]["save_dir"], "visualizations", "cv_metrics_summary.png"),
+            title="5-Fold CV Test Metrics",
+        )
     else:
         datasets, feature_names, dims, metadata = build_datasets(
             cfg["data"], cfg["training"]["seed"]
