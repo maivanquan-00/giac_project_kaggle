@@ -153,7 +153,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             print(f"⏹️  Early stopping tại epoch {epoch} cho {fold_name}")
             break
 
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
     test_metrics = eval_epoch(model, test_loader, graph, device)
 

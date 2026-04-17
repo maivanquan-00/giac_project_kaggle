@@ -123,7 +123,7 @@ def main():
 
     # ── Load model ────────────────────────────────────────────────────
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
-    ckpt  = torch.load(args.checkpoint, map_location=device)
+    ckpt  = torch.load(args.checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
     print(f"✅ Loaded: {args.checkpoint}")
 

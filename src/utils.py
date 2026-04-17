@@ -57,7 +57,7 @@ def save_checkpoint(model, optimizer, epoch, metrics, path, extra_state=None):
 
 
 def load_checkpoint(model, optimizer, path, device):
-    ckpt = torch.load(path, map_location=device)
+    ckpt = torch.load(path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
     optimizer.load_state_dict(ckpt["optimizer"])
     print(f"  ✅ Loaded checkpoint từ epoch {ckpt['epoch']}: {ckpt['metrics']}")
