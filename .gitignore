@@ -1,0 +1,11 @@
+# Logs & experiment notes
+TestPhaseA.md
+Test.md
+
+# Python
+__pycache__/
+*.pyc
+
+# Checkpoints & outputs
+checkpoints/
+*.pt

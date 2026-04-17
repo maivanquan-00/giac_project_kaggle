@@ -183,8 +183,8 @@ def run_one_config(cfg, config_name, modality_config,
     }
 
 
-def run_ablation(cfg, fold_package, device):
-    """Run all 6 ablation configs on fold 1."""
+def run_ablation_one_fold(cfg, fold_no, fold_package, device):
+    """Run all 6 ablation configs on a single fold. Returns dict of results."""
     datasets, feature_names, dims, metadata = fold_package["datasets"]
 
     train_loader = DataLoader(
@@ -201,26 +201,22 @@ def run_ablation(cfg, fold_package, device):
         feature_names, cfg["data"], cfg["graph"], device=str(device)
     )
 
-    results = {}
+    fold_results = {}
     for config_name, modality_config in ABLATION_CONFIGS.items():
         res = run_one_config(
             cfg, config_name, modality_config,
             train_loader, val_loader, test_loader,
             graph, dims, datasets, device,
         )
-        results[config_name] = res
+        fold_results[config_name] = res
 
-    # ── Summary Table ────────────────────────────────────────────
+    # ── Per-fold summary ─────────────────────────────────────────
     print(f"\n{'='*74}")
-    print(f"📊 ABLATION SUMMARY (Fold 1)")
+    print(f"📊 ABLATION SUMMARY — Fold {fold_no}")
     print(f"{'='*74}")
-    header = (
-        f"{'Config':<15} {'Val F1':>8} "
-        f"{'Test Acc':>10} {'Test P':>8} {'Test R':>8} {'Test F1':>8}"
-    )
-    print(header)
+    print(f"{'Config':<15} {'Val F1':>8} {'Test Acc':>10} {'Test P':>8} {'Test R':>8} {'Test F1':>8}")
     print("-" * 74)
-    for config_name, res in results.items():
+    for config_name, res in fold_results.items():
         t = res["test"]
         print(
             f"{config_name:<15} {res['best_val_f1']:>8.4f} "
@@ -229,12 +225,66 @@ def run_ablation(cfg, fold_package, device):
         )
     print(f"{'='*74}")
 
-    return results
+    return fold_results
+
+
+def print_cross_fold_summary(all_fold_results):
+    """Print mean ± std across folds for each ablation config."""
+    config_names = list(ABLATION_CONFIGS.keys())
+    metric_keys = ["accuracy", "precision", "recall", "f1"]
+
+    print(f"\n{'#'*78}")
+    print(f"##  📊 ABLATION — 5-FOLD CROSS-VALIDATED SUMMARY")
+    print(f"{'#'*78}\n")
+
+    # ── Table 1: Test F1 per fold ────────────────────────────────
+    print(f"{'Config':<15}", end="")
+    for fold_no in range(1, len(all_fold_results) + 1):
+        print(f" {'Fold '+str(fold_no):>8}", end="")
+    print(f" {'Mean':>8} {'Std':>8}")
+    print("-" * (15 + 10 * len(all_fold_results) + 18))
+
+    for config_name in config_names:
+        f1_values = []
+        for fold_results in all_fold_results:
+            f1_values.append(fold_results[config_name]["test"]["f1"])
+        arr = np.array(f1_values)
+
+        print(f"{config_name:<15}", end="")
+        for v in f1_values:
+            print(f" {v:>8.4f}", end="")
+        print(f" {arr.mean():>8.4f} {arr.std():>8.4f}")
+
+    # ── Table 2: Full summary (mean ± std) ───────────────────────
+    print(f"\n{'='*74}")
+    print(f"{'Config':<15} {'Val F1':>12} {'Test Acc':>12} {'Test P':>12} {'Test R':>12} {'Test F1':>12}")
+    print("-" * 74)
+
+    for config_name in config_names:
+        val_f1s = np.array([fr[config_name]["best_val_f1"] for fr in all_fold_results])
+        test_metrics = {
+            mk: np.array([fr[config_name]["test"][mk] for fr in all_fold_results])
+            for mk in metric_keys
+        }
+
+        def fmt(arr):
+            return f"{arr.mean():.3f}±{arr.std():.3f}"
+
+        print(
+            f"{config_name:<15} "
+            f"{fmt(val_f1s):>12} "
+            f"{fmt(test_metrics['accuracy']):>12} "
+            f"{fmt(test_metrics['precision']):>12} "
+            f"{fmt(test_metrics['recall']):>12} "
+            f"{fmt(test_metrics['f1']):>12}"
+        )
+    print(f"{'='*74}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Modality ablation study")
+    parser = argparse.ArgumentParser(description="Modality ablation study (5-fold)")
     parser.add_argument("--config", default="configs/config.yaml")
+    parser.add_argument("--folds", type=int, default=5, help="Number of CV folds")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -244,19 +294,26 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🖥️  Device: {device}")
 
-    # Build only fold 1
-    print("📐 Building fold 1 for ablation study...")
+    n_folds = args.folds
+    print(f"📐 Building {n_folds}-fold CV for ablation study...")
     fold_packages = build_cv_datasets(
-        cfg["data"], cfg["training"]["seed"], n_splits=5
-    )
-    fold1 = fold_packages[0]
-    print(
-        f"   Fold 1: gene={fold1['datasets'][2]['gene']}, "
-        f"meth={fold1['datasets'][2]['meth']}, "
-        f"mirna={fold1['datasets'][2]['mirna']}"
+        cfg["data"], cfg["training"]["seed"], n_splits=n_folds
     )
 
-    run_ablation(cfg, fold1, device)
+    all_fold_results = []
+    for fold_package in fold_packages:
+        fold_no = fold_package["fold"]
+        dims = fold_package["datasets"][2]
+        print(
+            f"\n\n{'*'*78}"
+            f"\n*  ABLATION — Fold {fold_no}/{n_folds}"
+            f"\n*  gene={dims['gene']}, meth={dims['meth']}, mirna={dims['mirna']}"
+            f"\n{'*'*78}"
+        )
+        fold_results = run_ablation_one_fold(cfg, fold_no, fold_package, device)
+        all_fold_results.append(fold_results)
+
+    print_cross_fold_summary(all_fold_results)
 
 
 if __name__ == "__main__":
