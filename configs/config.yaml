@@ -70,12 +70,12 @@ training:
   onecycle_final_div_factor: 100.0
   weight_decay: 5.0e-2   # B3: tăng từ 1e-2 để giảm overfitting
   test_size: 0.2
-  focal_gamma: 2.0
+  focal_gamma: 3.0       # C2: tăng từ 2.0 → focus cứng hơn vào hard/minority examples
   focal_alpha: 1.0
-  label_smoothing: 0.05
+  label_smoothing: 0.10  # C1: tăng từ 0.05 → giảm overconfidence trên train set
   lambda_modality: 0.00  # không dùng sau B1 (không còn cross-attention)
   lambda_frobenius: 0.01
-  patience: 20
+  patience: 10           # C1: giảm từ 20 → early stop sớm hơn, tránh memorize
   seed: 42
   loss_name: "focal"
 
