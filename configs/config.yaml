@@ -74,7 +74,7 @@ training:
   focal_alpha: 1.0
   label_smoothing: 0.05  # D: revert từ 0.10 → 0.10 quá cao làm gradient yếu giai đoạn đầu
   lambda_modality: 0.00  # không dùng sau B1 (không còn cross-attention)
-  lambda_frobenius: 0.01
+  lambda_frobenius: 0.00  # E2: tắt → Frobenius reg đang kéo gate weights về 0, cản học
   patience: 15           # D: tăng từ 10 → 15 (giữa 20 quá dài và 10 quá ngắn)
   seed: 42
   loss_name: "focal"
