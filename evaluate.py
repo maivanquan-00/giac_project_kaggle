@@ -8,6 +8,8 @@ Chạy sau khi đã có checkpoint từ train.py:
 """
 
 import argparse
+import glob
+import os
 import yaml
 import json
 import pandas as pd
@@ -28,10 +30,28 @@ SUBTYPE_NAMES = {0: "CIN", 1: "GS", 2: "MSI", 3: "HM-SNV", 4: "EBV"}
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config",     default="configs/config.yaml")
-    parser.add_argument("--checkpoint", default="checkpoints/best_model.pt")
+    parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--split",      default="test", choices=["val", "test"])
     parser.add_argument("--top_k",      type=int, default=50)
     return parser.parse_args()
+
+
+def resolve_checkpoint_path(cfg: dict, user_checkpoint: str | None) -> str:
+    if user_checkpoint:
+        return user_checkpoint
+
+    save_dir = cfg.get("logging", {}).get("save_dir", "checkpoints")
+    default_ckpt = os.path.join(save_dir, "best_model.pt")
+    if os.path.exists(default_ckpt):
+        return default_ckpt
+
+    fold_ckpts = sorted(glob.glob(os.path.join(save_dir, "best_model_fold_*.pt")))
+    if fold_ckpts:
+        return fold_ckpts[0]
+
+    raise FileNotFoundError(
+        "Không tìm thấy checkpoint. Hãy truyền --checkpoint hoặc kiểm tra logging.save_dir."
+    )
 
 
 @torch.no_grad()
@@ -123,9 +143,10 @@ def main():
 
     # ── Load model ────────────────────────────────────────────────────
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
-    ckpt  = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    checkpoint_path = resolve_checkpoint_path(cfg, args.checkpoint)
+    ckpt  = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
-    print(f"✅ Loaded: {args.checkpoint}")
+    print(f"✅ Loaded: {checkpoint_path}")
 
     # ── Evaluate ─────────────────────────────────────────────────────
     metrics, interp = evaluate_with_interpretability(

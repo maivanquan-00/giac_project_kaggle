@@ -1,0 +1,65 @@
+# Quick validation config for Kaggle CPU / no-GPU checks.
+# Use this for 1-2 fold sanity checks before running full training.
+
+data:
+  data_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
+  graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
+  cancer_types: ["COAD", "ESCA", "READ", "STAD"]
+
+preprocessing:
+  gene_top_k: 1500
+  meth_top_k: 1500
+  mirna_top_k: 500
+  feature_selection_method: "anova"
+  val_size: 0.1
+  cv_folds: 2
+
+graph:
+  emqtl_pval_threshold: 0.05
+  max_edges_per_node: 30
+  ppi_score_threshold: 700
+  use_ppi: true
+  use_mirna: true
+
+model:
+  hidden_dim: 96
+  gat_heads: 4
+  gat_layers: 2
+  gat_dropout: 0.4
+  cross_attn_heads: 8
+  sparsemax_alpha: 1.5
+  modality_temperature: 1.0
+  cross_attn_dropout: 0.4
+  fusion_mode: "hybrid"
+  learnable_blend: true
+  fixed_blend_alpha: 0.30
+  num_classes: 5
+  classifier_dropout: 0.5
+  final_dim: 48
+
+training:
+  epochs: 40
+  batch_size: 16
+  learning_rate: 1.0e-4
+  max_learning_rate: 4.0e-4
+  scheduler: "onecycle"
+  onecycle_pct_start: 0.1
+  onecycle_div_factor: 10.0
+  onecycle_final_div_factor: 100.0
+  weight_decay: 1.0e-2
+  test_size: 0.2
+  focal_gamma: 2.0
+  focal_alpha: 1.0
+  label_smoothing: 0.05
+  lambda_modality: 0.00
+  lambda_frobenius: 0.01
+  patience: 8
+  seed: 42
+  loss_name: "focal"
+
+logging:
+  save_dir: "/kaggle/working/checkpoints/quick_check"
+  log_interval: 5
+
+interpretability:
+  top_k_features: 30

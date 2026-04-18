@@ -77,7 +77,12 @@ def load_aligned_data(cfg: dict) -> dict:
     print("📂 Loading data từ:", root)
 
     labels = pd.read_csv(os.path.join(root, "final_labels.csv"), index_col=0)
-    gene = pd.read_csv(os.path.join(root, "final_gene_symbol.csv"), index_col=0)
+    gene_path = _resolve_existing_path(
+        root,
+        ["final_gene_symbol.csv", "final_gene.csv"],
+        asset_name="gene matrix",
+    )
+    gene = pd.read_csv(gene_path, index_col=0)
     meth = pd.read_csv(os.path.join(root, "final_methylation.csv"), index_col=0)
     mirna = pd.read_csv(os.path.join(root, "final_mirna.csv"), index_col=0)
 
@@ -264,6 +269,17 @@ def _get_preprocess_cfg(cfg: dict) -> dict:
     preprocess_cfg = dict(DEFAULT_PREPROCESS_CFG)
     preprocess_cfg.update(cfg.get("preprocessing", {}))
     return preprocess_cfg
+
+
+def _resolve_existing_path(root: str, candidates: List[str], asset_name: str) -> str:
+    for name in candidates:
+        path = os.path.join(root, name)
+        if os.path.exists(path):
+            return path
+    tried = ", ".join(candidates)
+    raise FileNotFoundError(
+        f"Không tìm thấy {asset_name} trong {root}. Đã thử: {tried}"
+    )
 
 
 class OmicDataset(Dataset):
