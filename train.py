@@ -135,17 +135,10 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device)
     )
 
-    # G2: Param groups — node_emb (896K/1.49M params, shared, dễ overfit với 659 samples)
-    # cần WD cao hơn phần còn lại (GAT convs, gate MLP, classifier)
-    node_emb_params = list(model.gat_module.node_emb.parameters())
-    node_emb_ids = {id(p) for p in node_emb_params}
-    other_params = [p for p in model.parameters() if id(p) not in node_emb_ids]
     optimizer = torch.optim.AdamW(
-        [
-            {"params": node_emb_params, "weight_decay": 5e-2},   # node_emb: WD cao
-            {"params": other_params,    "weight_decay": cfg["training"]["weight_decay"]},  # rest: 1e-2
-        ],
+        model.parameters(),
         lr=cfg["training"]["learning_rate"],
+        weight_decay=cfg["training"]["weight_decay"],
     )
 
     scheduler_name = cfg["training"].get("scheduler", "onecycle").lower()
