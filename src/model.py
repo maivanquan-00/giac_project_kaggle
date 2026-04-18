@@ -1,8 +1,11 @@
 """
 model.py
 --------
-Full GIAC model with graph encoder, sparse fusion, lightweight feature
-interpretability, and imbalance-aware classification loss.
+GIAC model: Graph encoder + Gated Modality Fusion + Focal Loss classifier.
+
+Phase B1 change: Cross-attention fusion replaced by a single patient-specific
+Gated Fusion MLP. Ablation showed cross-attention was destroying signal
+(all < meth_only). Patient gate already learned to suppress miRNA correctly.
 """
 
 import torch
@@ -11,24 +14,29 @@ import torch.nn.functional as F
 from torch_geometric.data import HeteroData
 
 from src.models.gat_encoder import MultiOmicGATModule
-from src.models.sparse_attention import (
-    PatientSparseAttention,
-    SparseMultiheadCrossAttention,
-)
 from src.models.classifier import (
     FocalLoss,
     SubtypeClassifier,
     frobenius_regularization_loss,
-    modality_regularization_loss,
 )
 
 
 class GIACModel(nn.Module):
+    """GIAC model with Gated Modality Fusion.
+
+    Architecture:
+        1. GAT Encoder  → z_gene, z_cpg, z_mirna  (B, hidden_dim each)
+        2. Modality Gate → per-patient softmax weights over 3 modalities
+        3. Weighted Sum  → fused = sum_m(gate_m * z_m)  (B, hidden_dim)
+        4. Classifier   → logits  (B, num_classes)
+    """
+
     def __init__(self, dims: dict, cfg_model: dict, cfg_train: dict):
         super().__init__()
 
         hidden_dim = cfg_model["hidden_dim"]
         num_classes = cfg_model["num_classes"]
+        gate_dropout = cfg_model.get("gate_dropout", cfg_model["classifier_dropout"])
 
         self.gat_module = MultiOmicGATModule(
             dims=dims,
@@ -38,18 +46,15 @@ class GIACModel(nn.Module):
             dropout=cfg_model["gat_dropout"],
         )
 
-        self.sparse_cross_attn = SparseMultiheadCrossAttention(
-            hidden_dim=hidden_dim,
-            n_heads=cfg_model["cross_attn_heads"],
-            dropout=cfg_model["cross_attn_dropout"],
-            sparsemax_alpha=cfg_model["sparsemax_alpha"],
-            modality_temperature=cfg_model.get("modality_temperature", 1.0),
-        )
-
-        self.patient_attn = PatientSparseAttention(
-            dims=dims,
-            hidden_dim=hidden_dim,
-            alpha=cfg_model["sparsemax_alpha"],
+        # ── Gated Modality Fusion ─────────────────────────────────────
+        # Input: concat of 3 modality vectors  (B, hidden_dim*3)
+        # Output: softmax weights over 3 modalities  (B, 3)
+        self.modality_gate = nn.Sequential(
+            nn.LayerNorm(hidden_dim * 3),
+            nn.Linear(hidden_dim * 3, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(gate_dropout),
+            nn.Linear(hidden_dim, 3),
         )
 
         self.classifier = SubtypeClassifier(
@@ -59,24 +64,6 @@ class GIACModel(nn.Module):
             dropout=cfg_model["classifier_dropout"],
         )
 
-        self.modality_gate = nn.Sequential(
-            nn.LayerNorm(hidden_dim * 3),
-            nn.Linear(hidden_dim * 3, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(cfg_model["classifier_dropout"]),
-            nn.Linear(hidden_dim, 3),
-        )
-
-        self.fusion_mode = cfg_model.get("fusion_mode", "hybrid")
-        self.learnable_blend = bool(cfg_model.get("learnable_blend", False))
-        fixed_blend_alpha = float(cfg_model.get("fixed_blend_alpha", 0.5))
-        fixed_blend_alpha = min(max(fixed_blend_alpha, 0.0), 1.0)
-        if self.learnable_blend:
-            init_logit = torch.logit(torch.tensor(fixed_blend_alpha).clamp(1e-4, 1 - 1e-4))
-            self.fusion_logit = nn.Parameter(init_logit)
-        else:
-            self.register_buffer("fixed_blend_alpha", torch.tensor(fixed_blend_alpha))
-
         self.loss_name = cfg_train.get("loss_name", "focal").lower()
         self.register_buffer("class_weights", torch.ones(num_classes, dtype=torch.float32))
         self.focal_loss = FocalLoss(
@@ -85,7 +72,6 @@ class GIACModel(nn.Module):
             num_classes=num_classes,
             label_smoothing=cfg_train.get("label_smoothing", 0.0),
         )
-        self.lambda1 = cfg_train["lambda_modality"]
         self.lambda2 = cfg_train["lambda_frobenius"]
 
     def set_class_weights(self, class_weights: torch.Tensor):
@@ -94,43 +80,22 @@ class GIACModel(nn.Module):
         self.focal_loss.set_alpha(self.class_weights)
 
     def forward(self, batch: dict, graph: HeteroData, return_interpretability: bool = False):
-        z_gene, z_cpg, z_mirna = self.gat_module(batch, graph)
+        # 1. Graph-based encoding per modality
+        z_gene, z_cpg, z_mirna = self.gat_module(batch, graph)  # each: (B, hidden_dim)
 
-        if return_interpretability:
-            cross_fused, _, global_modality_weights = self.sparse_cross_attn(
-                z_gene, z_cpg, z_mirna, return_sparse_weights=True
-            )
-        else:
-            cross_fused = self.sparse_cross_attn(z_gene, z_cpg, z_mirna)
-            global_modality_weights = None
+        # 2. Patient-specific modality gate
+        gate_input = torch.cat([z_gene, z_cpg, z_mirna], dim=-1)  # (B, hidden_dim*3)
+        patient_gate = F.softmax(self.modality_gate(gate_input), dim=-1)  # (B, 3)
 
-        patient_sparse = self.patient_attn(batch)
+        # 3. Gated weighted sum fusion
+        stacked = torch.stack([z_gene, z_cpg, z_mirna], dim=1)   # (B, 3, hidden_dim)
+        fused = (stacked * patient_gate.unsqueeze(-1)).sum(dim=1) # (B, hidden_dim)
 
-        stacked_modalities = torch.stack([z_gene, z_cpg, z_mirna], dim=1)
-        patient_gate = F.softmax(
-            self.modality_gate(torch.cat([z_gene, z_cpg, z_mirna], dim=-1)),
-            dim=-1,
-        )
-        patient_fused = (stacked_modalities * patient_gate.unsqueeze(-1)).sum(dim=1)
-
-        if self.fusion_mode == "patient_only":
-            fused = patient_fused
-        elif self.fusion_mode == "cross_only":
-            fused = cross_fused
-        else:
-            if self.learnable_blend:
-                blend_alpha = torch.sigmoid(self.fusion_logit)
-            else:
-                blend_alpha = self.fixed_blend_alpha
-            fused = blend_alpha * cross_fused + (1.0 - blend_alpha) * patient_fused
-
+        # 4. Classification
         logits = self.classifier(fused)
 
         if return_interpretability:
-            return logits, patient_sparse, {
-                "global": global_modality_weights,
-                "patient": patient_gate,
-            }
+            return logits, None, {"patient": patient_gate}
         return logits
 
     def compute_loss(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
@@ -139,9 +104,8 @@ class GIACModel(nn.Module):
         else:
             loss_cls = self.focal_loss(logits, labels)
 
-        mod_w = self.sparse_cross_attn.modality_weights
-        loss_mod = modality_regularization_loss(mod_w, self.lambda1)
+        # Frobenius regularization on gate MLP weights
         loss_frob = frobenius_regularization_loss(
-            self.sparse_cross_attn, self.lambda2, param_prefix="W_"
+            self.modality_gate, self.lambda2, param_prefix="weight"
         )
-        return loss_cls + loss_mod + loss_frob
+        return loss_cls + loss_frob

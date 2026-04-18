@@ -205,12 +205,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             print(f"{fold_name} | Epoch {epoch:3d}/{cfg['training']['epochs']}")
             print_metrics(train_metrics, "Train")
             print_metrics(val_metrics, "Val  ")
-            global_w = model.sparse_cross_attn.modality_weights.detach().cpu()
-            print(
-                f"       Global modality weights: "
-                f"gene={global_w[0]:.3f}, meth={global_w[1]:.3f}, mirna={global_w[2]:.3f}"
-            )
-            print()
+
 
         if val_metrics["f1"] > best_val_f1:
             best_val_f1 = val_metrics["f1"]

@@ -20,7 +20,6 @@ from sklearn.metrics import classification_report
 from src.data.dataset        import build_datasets
 from src.data.graph_builder  import build_hetero_graph
 from src.model               import GIACModel
-from src.models.sparse_attention import get_top_k_features
 from src.utils               import set_seed, compute_metrics, print_metrics
 
 
@@ -58,26 +57,22 @@ def resolve_checkpoint_path(cfg: dict, user_checkpoint: str | None) -> str:
 def evaluate_with_interpretability(model, loader, graph, feature_names, top_k, device):
     model.eval()
 
-    all_preds, all_labels    = [], []
-    all_gene_features        = []   # top-K gene per patient
-    all_meth_features        = []
-    all_mirna_features       = []
+    all_preds, all_labels = [], []
+    all_patient_gates = []   # (N, 3) gate weights per patient
 
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
 
-        logits, sparse_weights, mod_w = model(
+        logits, _, mod_w = model(
             batch, graph, return_interpretability=True
         )
         preds = logits.argmax(dim=-1).cpu().tolist()
         all_preds.extend(preds)
         all_labels.extend(batch["label"].cpu().tolist())
+        all_patient_gates.append(mod_w["patient"].cpu())
 
-        # Trích xuất top-K features cho batch này
-        top_features = get_top_k_features(sparse_weights, feature_names, k=top_k)
-        all_gene_features.extend(top_features["gene"])
-        all_meth_features.extend(top_features["meth"])
-        all_mirna_features.extend(top_features["mirna"])
+    import torch as _torch
+    gates = _torch.cat(all_patient_gates, dim=0)  # (N, 3)
 
     metrics = compute_metrics(all_labels, all_preds)
     print("\n📋 Classification Report:")
@@ -88,11 +83,9 @@ def evaluate_with_interpretability(model, loader, graph, feature_names, top_k, d
     ))
 
     return metrics, {
-        "gene":  all_gene_features,
-        "meth":  all_meth_features,
-        "mirna": all_mirna_features,
         "labels": all_labels,
         "preds":  all_preds,
+        "gates":  gates,  # (N, 3) — gene / meth / mirna gate weights
     }
 
 
@@ -154,25 +147,19 @@ def main():
     )
     print_metrics(metrics, args.split.capitalize())
 
-    # In modality weights của model
-    w = model.sparse_cross_attn.modality_weights.detach().cpu()
-    print(f"\n🔬 Modality weights (learned):")
-    print(f"   Gene expression : {w[0]:.4f}")
-    print(f"   DNA methylation : {w[1]:.4f}")
-    print(f"   miRNA           : {w[2]:.4f}")
+    # In patient gate statistics
+    gates = interp["gates"]  # (N, 3)
+    print(f"\n🔍 Patient Modality Gate Statistics (N={gates.shape[0]})")
+    for i, name in enumerate(["Gene expression", "DNA methylation", "miRNA"]):
+        print(f"   {name:20s}: mean={gates[:,i].mean():.4f}  std={gates[:,i].std():.4f}")
 
-    # ── Xuất patient report ──────────────────────────────────────────
-    save_patient_report(interp, output_path="patient_features.csv")
-
-    # ── Summary: top genes overall ───────────────────────────────────
-    print("\n🧬 Top 20 genes xuất hiện nhiều nhất trên toàn bộ bệnh nhân:")
-    from collections import Counter
-    all_genes = []
-    for patient_genes in interp["gene"]:
-        all_genes.extend([g for g, _ in patient_genes])
-    top20 = Counter(all_genes).most_common(20)
-    for gene, count in top20:
-        print(f"   {gene:20s}  {count} patients")
+    # ── Summary: correct vs incorrect predictions ──────────────────────
+    import torch as _torch
+    labels_t = _torch.tensor(interp["labels"])
+    preds_t  = _torch.tensor(interp["preds"])
+    correct  = (labels_t == preds_t)
+    print(f"\n✔️  Accuracy: {correct.float().mean().item():.4f}")
+    print(f"   Correct: {correct.sum().item()} / {len(correct)}")
 
 
 if __name__ == "__main__":
