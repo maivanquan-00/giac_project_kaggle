@@ -41,7 +41,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def train_epoch(model, loader, optimizer, graph, device):
+def train_epoch(model, loader, optimizer, graph, device, scheduler=None):
     model.train()
     total_loss = 0.0
     all_preds, all_labels = [], []
@@ -55,6 +55,8 @@ def train_epoch(model, loader, optimizer, graph, device):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
 
         total_loss += loss.item()
         all_preds.extend(logits.argmax(dim=-1).cpu().tolist())
@@ -138,14 +140,31 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         lr=cfg["training"]["learning_rate"],
         weight_decay=cfg["training"]["weight_decay"],
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=cfg["training"]["epochs"]
-    )
+
+    scheduler_name = cfg["training"].get("scheduler", "onecycle").lower()
+    if scheduler_name == "onecycle":
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=cfg["training"].get("max_learning_rate", cfg["training"]["learning_rate"] * 5.0),
+            epochs=cfg["training"]["epochs"],
+            steps_per_epoch=max(len(train_loader), 1),
+            pct_start=cfg["training"].get("onecycle_pct_start", 0.1),
+            div_factor=cfg["training"].get("onecycle_div_factor", 10.0),
+            final_div_factor=cfg["training"].get("onecycle_final_div_factor", 100.0),
+        )
+        scheduler_step_per_batch = True
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=cfg["training"]["epochs"]
+        )
+        scheduler_step_per_batch = False
+
     early_stop = EarlyStopping(patience=cfg["training"]["patience"])
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"\n🧠 {fold_name} model parameters: {n_params:,}")
     print(f"🚀 Bắt đầu training {fold_name.lower()}...\n")
+    print(f"🗓️  Scheduler: {scheduler_name}")
 
     best_val_f1 = 0.0
     save_dir = cfg["logging"]["save_dir"]
@@ -167,9 +186,17 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
 
     for epoch in range(1, cfg["training"]["epochs"] + 1):
-        train_metrics = train_epoch(model, train_loader, optimizer, graph, device)
+        train_metrics = train_epoch(
+            model,
+            train_loader,
+            optimizer,
+            graph,
+            device,
+            scheduler=scheduler if scheduler_step_per_batch else None,
+        )
         val_metrics = eval_epoch(model, val_loader, graph, device)
-        scheduler.step()
+        if not scheduler_step_per_batch:
+            scheduler.step()
         history["train_loss"].append(train_metrics["loss"])
         history["train_f1"].append(train_metrics["f1"])
         history["val_f1"].append(val_metrics["f1"])

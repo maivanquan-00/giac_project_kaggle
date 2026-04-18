@@ -43,6 +43,7 @@ class SparseMultiheadCrossAttention(nn.Module):
         n_heads: int,          # số attention heads (32 như MoXGATE)
         dropout: float,
         sparsemax_alpha: float = 1.5,  # 1.0=softmax, 1.5=sparsemax, 2.0=harder sparse
+        modality_temperature: float = 1.0,
     ):
         super().__init__()
         assert hidden_dim % n_heads == 0, \
@@ -53,6 +54,7 @@ class SparseMultiheadCrossAttention(nn.Module):
         self.head_dim   = hidden_dim // n_heads
         self.alpha      = sparsemax_alpha
         self.scale      = self.head_dim ** -0.5
+        self.modality_temperature = max(float(modality_temperature), 1e-3)
 
         # Projection matrices cho Q, K, V
         self.W_q = nn.Linear(hidden_dim, hidden_dim, bias=False)
@@ -71,8 +73,7 @@ class SparseMultiheadCrossAttention(nn.Module):
     @property
     def modality_weights(self) -> torch.Tensor:
         """Trả về w = softmax(logits) để đảm bảo sum=1."""
-        temperature = 0.1
-        return F.softmax(self.modality_logits / temperature, dim=0)  # (3,)
+        return F.softmax(self.modality_logits / self.modality_temperature, dim=0)  # (3,)
 
     def forward(
         self,

@@ -43,6 +43,7 @@ class GIACModel(nn.Module):
             n_heads=cfg_model["cross_attn_heads"],
             dropout=cfg_model["cross_attn_dropout"],
             sparsemax_alpha=cfg_model["sparsemax_alpha"],
+            modality_temperature=cfg_model.get("modality_temperature", 1.0),
         )
 
         self.patient_attn = PatientSparseAttention(
@@ -66,12 +67,23 @@ class GIACModel(nn.Module):
             nn.Linear(hidden_dim, 3),
         )
 
+        self.fusion_mode = cfg_model.get("fusion_mode", "hybrid")
+        self.learnable_blend = bool(cfg_model.get("learnable_blend", False))
+        fixed_blend_alpha = float(cfg_model.get("fixed_blend_alpha", 0.5))
+        fixed_blend_alpha = min(max(fixed_blend_alpha, 0.0), 1.0)
+        if self.learnable_blend:
+            init_logit = torch.logit(torch.tensor(fixed_blend_alpha).clamp(1e-4, 1 - 1e-4))
+            self.fusion_logit = nn.Parameter(init_logit)
+        else:
+            self.register_buffer("fixed_blend_alpha", torch.tensor(fixed_blend_alpha))
+
         self.loss_name = cfg_train.get("loss_name", "focal").lower()
         self.register_buffer("class_weights", torch.ones(num_classes, dtype=torch.float32))
         self.focal_loss = FocalLoss(
             gamma=cfg_train["focal_gamma"],
             alpha=cfg_train["focal_alpha"],
             num_classes=num_classes,
+            label_smoothing=cfg_train.get("label_smoothing", 0.0),
         )
         self.lambda1 = cfg_train["lambda_modality"]
         self.lambda2 = cfg_train["lambda_frobenius"]
@@ -85,11 +97,11 @@ class GIACModel(nn.Module):
         z_gene, z_cpg, z_mirna = self.gat_module(batch, graph)
 
         if return_interpretability:
-            fused, _, global_modality_weights = self.sparse_cross_attn(
+            cross_fused, _, global_modality_weights = self.sparse_cross_attn(
                 z_gene, z_cpg, z_mirna, return_sparse_weights=True
             )
         else:
-            fused = self.sparse_cross_attn(z_gene, z_cpg, z_mirna)
+            cross_fused = self.sparse_cross_attn(z_gene, z_cpg, z_mirna)
             global_modality_weights = None
 
         patient_sparse = self.patient_attn(batch)
@@ -100,7 +112,17 @@ class GIACModel(nn.Module):
             dim=-1,
         )
         patient_fused = (stacked_modalities * patient_gate.unsqueeze(-1)).sum(dim=1)
-        fused = 0.5 * fused + 0.5 * patient_fused
+
+        if self.fusion_mode == "patient_only":
+            fused = patient_fused
+        elif self.fusion_mode == "cross_only":
+            fused = cross_fused
+        else:
+            if self.learnable_blend:
+                blend_alpha = torch.sigmoid(self.fusion_logit)
+            else:
+                blend_alpha = self.fixed_blend_alpha
+            fused = blend_alpha * cross_fused + (1.0 - blend_alpha) * patient_fused
 
         logits = self.classifier(fused)
 

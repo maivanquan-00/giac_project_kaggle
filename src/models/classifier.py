@@ -30,9 +30,16 @@ class FocalLoss(nn.Module):
     Reference: Lin et al., "Focal Loss for Dense Object Detection", CVPR 2017
     """
 
-    def __init__(self, gamma: float = 2.0, alpha=1.0, num_classes: int = 5):
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        alpha=1.0,
+        num_classes: int = 5,
+        label_smoothing: float = 0.0,
+    ):
         super().__init__()
         self.gamma = gamma
+        self.label_smoothing = float(min(max(label_smoothing, 0.0), 0.2))
 
         if isinstance(alpha, (int, float)):
             alpha_tensor = torch.ones(num_classes, dtype=torch.float32) * alpha
@@ -62,7 +69,13 @@ class FocalLoss(nn.Module):
         # Focal weight
         focal_weight = (1.0 - pt) ** self.gamma  # (B,)
 
-        loss = -alpha_t * focal_weight * log_pt   # (B,)
+        if self.label_smoothing > 0.0:
+            smooth_ce = -log_probs.mean(dim=1)
+            ce = -(1.0 - self.label_smoothing) * log_pt + self.label_smoothing * smooth_ce
+        else:
+            ce = -log_pt
+
+        loss = alpha_t * focal_weight * ce   # (B,)
         return loss.mean()
 
 
