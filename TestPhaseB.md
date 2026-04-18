@@ -26,124 +26,96 @@
    Parsing hsa_MTI.csv... 41,402 edges
    miRNA→Gene edges: 41,402
 
-🧠 Fold 1 model parameters: 1,583,724
+🧠 Fold 1 model parameters: 1,489,800
 🚀 Bắt đầu training fold 1...
 
 🗓️  Scheduler: onecycle
 Fold 1 | Epoch   1/150
-[Train] Acc=0.2170  P=0.1738  R=0.1403  F1=0.1321
-[Val  ] Acc=0.2973  P=0.1972  R=0.2387  F1=0.1885
-       Global modality weights: gene=0.327, meth=0.334, mirna=0.338
-
+[Train] Acc=0.0986  P=0.1763  R=0.1495  F1=0.0807
+[Val  ] Acc=0.0811  P=0.1646  R=0.2444  F1=0.0735
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch   5/150
-[Train] Acc=0.3475  P=0.3112  R=0.3956  F1=0.2697
-[Val  ] Acc=0.3514  P=0.3048  R=0.4358  F1=0.2834
-       Global modality weights: gene=0.327, meth=0.334, mirna=0.338
-
+[Train] Acc=0.1897  P=0.3063  R=0.3455  F1=0.1974
+[Val  ] Acc=0.1892  P=0.2854  R=0.4554  F1=0.2090
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  10/150
-[Train] Acc=0.4734  P=0.3692  R=0.5300  F1=0.3670
-[Val  ] Acc=0.4865  P=0.4267  R=0.6325  F1=0.4494
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.3338  P=0.3435  R=0.4884  F1=0.2935
+[Val  ] Acc=0.3919  P=0.3767  R=0.5903  F1=0.3721
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  15/150
-[Train] Acc=0.6419  P=0.5314  R=0.7382  F1=0.5661
-[Val  ] Acc=0.7162  P=0.6285  R=0.7289  F1=0.6597
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.5068  P=0.4366  R=0.6448  F1=0.4427
+[Val  ] Acc=0.4865  P=0.5344  R=0.5507  F1=0.4630
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  20/150
-[Train] Acc=0.8058  P=0.7091  R=0.8628  F1=0.7602
-[Val  ] Acc=0.8514  P=0.7529  R=0.7689  F1=0.7593
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.7132  P=0.5680  R=0.8116  F1=0.6217
+[Val  ] Acc=0.6892  P=0.6130  R=0.7209  F1=0.6414
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  25/150
-[Train] Acc=0.8786  P=0.8089  R=0.9520  F1=0.8600
-[Val  ] Acc=0.7838  P=0.6239  R=0.6711  F1=0.6427
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.8361  P=0.7033  R=0.9069  F1=0.7657
+[Val  ] Acc=0.7703  P=0.7078  R=0.7449  F1=0.7206
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  30/150
-[Train] Acc=0.9636  P=0.9452  R=0.9872  F1=0.9638
-[Val  ] Acc=0.8378  P=0.8300  R=0.7649  F1=0.7763
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
+[Train] Acc=0.8862  P=0.7954  R=0.9473  F1=0.8492
+[Val  ] Acc=0.7973  P=0.6086  R=0.6569  F1=0.6292
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  35/150
-[Train] Acc=0.9833  P=0.9655  R=0.9908  F1=0.9776
-[Val  ] Acc=0.8784  P=0.7869  R=0.7769  F1=0.7761
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.9287  P=0.8588  R=0.9726  F1=0.9054
+[Val  ] Acc=0.8514  P=0.8444  R=0.7871  F1=0.7960
 Fold 1 | Epoch  40/150
-[Train] Acc=0.9894  P=0.9768  R=0.9969  F1=0.9865
-[Val  ] Acc=0.8784  P=0.8782  R=0.7951  F1=0.8183
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.9423  P=0.8835  R=0.9788  F1=0.9238
+[Val  ] Acc=0.8378  P=0.8228  R=0.7649  F1=0.7729
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  45/150
-[Train] Acc=0.9909  P=0.9855  R=0.9973  F1=0.9912
-[Val  ] Acc=0.8514  P=0.7551  R=0.7689  F1=0.7578
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.9621  P=0.9105  R=0.9873  F1=0.9443
+[Val  ] Acc=0.8514  P=0.8450  R=0.7871  F1=0.7951
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_1.pt
 Fold 1 | Epoch  50/150
-[Train] Acc=0.9939  P=0.9901  R=0.9982  F1=0.9940
-[Val  ] Acc=0.8378  P=0.7405  R=0.7649  F1=0.7497
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
+[Train] Acc=0.9712  P=0.9162  R=0.9894  F1=0.9494
+[Val  ] Acc=0.8514  P=0.8450  R=0.7871  F1=0.7951
 Fold 1 | Epoch  55/150
-[Train] Acc=0.9894  P=0.9835  R=0.9969  F1=0.9899
-[Val  ] Acc=0.8649  P=0.8554  R=0.7729  F1=0.7933
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
-Fold 1 | Epoch  60/150
-[Train] Acc=0.9985  P=0.9974  R=0.9996  F1=0.9985
-[Val  ] Acc=0.8514  P=0.7551  R=0.7689  F1=0.7578
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
-Fold 1 | Epoch  65/150
-[Train] Acc=1.0000  P=1.0000  R=1.0000  F1=1.0000
-[Val  ] Acc=0.8378  P=0.8300  R=0.7649  F1=0.7763
-       Global modality weights: gene=0.327, meth=0.333, mirna=0.340
-
-⏹️  Early stopping tại epoch 67 cho Fold 1
+[Train] Acc=0.9757  P=0.9243  R=0.9929  F1=0.9560
+[Val  ] Acc=0.8784  P=0.7878  R=0.7951  F1=0.7869
+⏹️  Early stopping tại epoch 58 cho Fold 1
 
 📊 Đánh giá trên Test set - Fold 1
-[Test ] Acc=0.8370  P=0.7300  R=0.8020  F1=0.7594
-✅ Best val F1: 0.8458
-✅ Test F1:     0.7594
+[Test ] Acc=0.8424  P=0.8093  R=0.8019  F1=0.7814
+✅ Best val F1: 0.8328
+✅ Test F1:     0.7814
 
 📋 Classification Report - Fold 1
               precision    recall  f1-score   support
 
-         CIN     0.9375    0.8400    0.8861       125
-          GS     0.5625    0.8182    0.6667        22
-         MSI     0.7931    0.8519    0.8214        27
-      HM-SNV     0.5000    0.5000    0.5000         4
-         EBV     0.8571    1.0000    0.9231         6
+         CIN     0.9298    0.8480    0.8870       125
+          GS     0.5667    0.7727    0.6538        22
+         MSI     0.8000    0.8889    0.8421        27
+      HM-SNV     1.0000    0.5000    0.6667         4
+         EBV     0.7500    1.0000    0.8571         6
 
-    accuracy                         0.8370       184
-   macro avg     0.7300    0.8020    0.7594       184
-weighted avg     0.8593    0.8370    0.8432       184
+    accuracy                         0.8424       184
+   macro avg     0.8093    0.8019    0.7814       184
+weighted avg     0.8630    0.8424    0.8468       184
 
   📄 Confusion matrix (absolute) saved: /kaggle/working/checkpoints/visualizations/fold_1/confusion_matrix_test_absolute.csv
 
 🔍 Patient Gate Statistics - Fold 1
-   gene : mean=0.3243  std=0.4193  min=0.0003  max=0.9999
-   meth : mean=0.4813  std=0.4114  min=0.0000  max=0.9984
-   mirna: mean=0.1944  std=0.2698  min=0.0000  max=0.9825
+   gene : mean=0.3884  std=0.0768  min=0.3027  max=0.5356
+   meth : mean=0.2974  std=0.0463  min=0.2115  max=0.3508
+   mirna: mean=0.3142  std=0.0305  min=0.2530  max=0.3465
 
 📐 Fold 2: gene=3000, meth=3000, mirna=1000
 
@@ -162,111 +134,92 @@ weighted avg     0.8593    0.8370    0.8432       184
    Parsing hsa_MTI.csv... 41,033 edges
    miRNA→Gene edges: 41,033
 
-🧠 Fold 2 model parameters: 1,583,724
+🧠 Fold 2 model parameters: 1,489,800
 🚀 Bắt đầu training fold 2...
 
 🗓️  Scheduler: onecycle
 Fold 2 | Epoch   1/150
-[Train] Acc=0.1563  P=0.2133  R=0.2379  F1=0.1221
-[Val  ] Acc=0.0946  P=0.0756  R=0.2091  F1=0.0952
-       Global modality weights: gene=0.334, meth=0.335, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
+[Train] Acc=0.1608  P=0.1983  R=0.1770  F1=0.1213
+[Val  ] Acc=0.1486  P=0.2777  R=0.2866  F1=0.1678
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch   5/150
-[Train] Acc=0.2686  P=0.3091  R=0.4201  F1=0.2331
-[Val  ] Acc=0.2027  P=0.2821  R=0.2986  F1=0.1612
-       Global modality weights: gene=0.334, meth=0.335, mirna=0.331
-
+[Train] Acc=0.2079  P=0.2579  R=0.3667  F1=0.1889
+[Val  ] Acc=0.1081  P=0.1482  R=0.3253  F1=0.1310
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  10/150
-[Train] Acc=0.4021  P=0.3709  R=0.5608  F1=0.3576
-[Val  ] Acc=0.4459  P=0.3336  R=0.4496  F1=0.3272
-       Global modality weights: gene=0.334, meth=0.335, mirna=0.331
-
+[Train] Acc=0.3642  P=0.3423  R=0.5054  F1=0.3239
+[Val  ] Acc=0.2432  P=0.3437  R=0.4896  F1=0.2558
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  15/150
-[Train] Acc=0.6434  P=0.5163  R=0.7428  F1=0.5660
-[Val  ] Acc=0.7027  P=0.4923  R=0.6187  F1=0.5314
-       Global modality weights: gene=0.334, meth=0.334, mirna=0.331
-
+[Train] Acc=0.4977  P=0.4494  R=0.6600  F1=0.4539
+[Val  ] Acc=0.4324  P=0.4772  R=0.5570  F1=0.4475
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  20/150
-[Train] Acc=0.7982  P=0.6744  R=0.8872  F1=0.7445
-[Val  ] Acc=0.8243  P=0.6597  R=0.7690  F1=0.6961
-       Global modality weights: gene=0.334, meth=0.335, mirna=0.331
-
+[Train] Acc=0.5994  P=0.5401  R=0.7662  F1=0.5672
+[Val  ] Acc=0.6622  P=0.5206  R=0.6290  F1=0.5400
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  25/150
-[Train] Acc=0.9044  P=0.8414  R=0.9415  F1=0.8832
-[Val  ] Acc=0.8378  P=0.6800  R=0.6770  F1=0.6777
-       Global modality weights: gene=0.335, meth=0.334, mirna=0.331
-
+[Train] Acc=0.8058  P=0.6828  R=0.8734  F1=0.7326
+[Val  ] Acc=0.7703  P=0.5904  R=0.6752  F1=0.6205
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  30/150
-[Train] Acc=0.9727  P=0.9232  R=0.9882  F1=0.9517
-[Val  ] Acc=0.8649  P=0.7810  R=0.7810  F1=0.7810
-       Global modality weights: gene=0.334, meth=0.334, mirna=0.331
-
+[Train] Acc=0.8938  P=0.7768  R=0.9624  F1=0.8348
+[Val  ] Acc=0.8243  P=0.6667  R=0.7872  F1=0.7083
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  35/150
-[Train] Acc=0.9788  P=0.9513  R=0.9916  F1=0.9705
-[Val  ] Acc=0.8649  P=0.7810  R=0.7810  F1=0.7810
-       Global modality weights: gene=0.335, meth=0.334, mirna=0.331
-
+[Train] Acc=0.9241  P=0.8338  R=0.9713  F1=0.8863
+[Val  ] Acc=0.8378  P=0.6739  R=0.7912  F1=0.7168
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  40/150
-[Train] Acc=0.9727  P=0.9557  R=0.9898  F1=0.9715
-[Val  ] Acc=0.8378  P=0.7058  R=0.7730  F1=0.7310
-       Global modality weights: gene=0.334, meth=0.334, mirna=0.331
-
+[Train] Acc=0.9454  P=0.8513  R=0.9818  F1=0.9036
+[Val  ] Acc=0.8514  P=0.6822  R=0.7952  F1=0.7203
 Fold 2 | Epoch  45/150
-[Train] Acc=0.9939  P=0.9782  R=0.9982  F1=0.9879
-[Val  ] Acc=0.8649  P=0.8694  R=0.7627  F1=0.7989
-       Global modality weights: gene=0.334, meth=0.334, mirna=0.331
-
+[Train] Acc=0.9605  P=0.9020  R=0.9863  F1=0.9375
+[Val  ] Acc=0.8649  P=0.8143  R=0.7810  F1=0.7743
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_2.pt
 Fold 2 | Epoch  50/150
-[Train] Acc=0.9788  P=0.9313  R=0.9916  F1=0.9578
-[Val  ] Acc=0.8514  P=0.7473  R=0.7770  F1=0.7588
-       Global modality weights: gene=0.334, meth=0.334, mirna=0.331
-
+[Train] Acc=0.9727  P=0.9410  R=0.9877  F1=0.9624
+[Val  ] Acc=0.8649  P=0.7245  R=0.7992  F1=0.7547
 Fold 2 | Epoch  55/150
-[Train] Acc=0.9954  P=0.9862  R=0.9987  F1=0.9923
-[Val  ] Acc=0.8649  P=0.7307  R=0.7810  F1=0.7488
-       Global modality weights: gene=0.334, meth=0.334, mirna=0.331
-
-⏹️  Early stopping tại epoch 58 cho Fold 2
+[Train] Acc=0.9909  P=0.9791  R=0.9973  F1=0.9879
+[Val  ] Acc=0.8784  P=0.7286  R=0.8032  F1=0.7588
+⏹️  Early stopping tại epoch 57 cho Fold 2
 
 📊 Đánh giá trên Test set - Fold 2
-[Test ] Acc=0.8859  P=0.8189  R=0.7755  F1=0.7426
-✅ Best val F1: 0.8164
-✅ Test F1:     0.7426
+[Test ] Acc=0.8750  P=0.7094  R=0.7764  F1=0.7219
+✅ Best val F1: 0.7876
+✅ Test F1:     0.7219
 
 📋 Classification Report - Fold 2
               precision    recall  f1-score   support
 
-         CIN     0.9828    0.9120    0.9461       125
-          GS     0.6786    0.8636    0.7600        22
-         MSI     0.7667    0.8519    0.8070        27
-      HM-SNV     1.0000    0.2500    0.4000         4
-         EBV     0.6667    1.0000    0.8000         6
+         CIN     0.9737    0.8880    0.9289       125
+          GS     0.6923    0.8182    0.7500        22
+         MSI     0.7812    0.9259    0.8475        27
+      HM-SNV     0.5000    0.2500    0.3333         4
+         EBV     0.6000    1.0000    0.7500         6
 
-    accuracy                         0.8859       184
-   macro avg     0.8189    0.7755    0.7426       184
-weighted avg     0.9047    0.8859    0.8868       184
+    accuracy                         0.8750       184
+   macro avg     0.7094    0.7764    0.7219       184
+weighted avg     0.8893    0.8750    0.8768       184
 
   📄 Confusion matrix (absolute) saved: /kaggle/working/checkpoints/visualizations/fold_2/confusion_matrix_test_absolute.csv
 
 🔍 Patient Gate Statistics - Fold 2
-   gene : mean=0.3616  std=0.4524  min=0.0000  max=0.9998
-   meth : mean=0.5680  std=0.4545  min=0.0001  max=0.9996
-   mirna: mean=0.0704  std=0.1700  min=0.0001  max=0.8395
+   gene : mean=0.3620  std=0.0650  min=0.2929  max=0.4855
+   meth : mean=0.3106  std=0.0423  min=0.2325  max=0.3575
+   mirna: mean=0.3274  std=0.0227  min=0.2820  max=0.3499
 
 📐 Fold 3: gene=3000, meth=3000, mirna=1000
 
@@ -285,120 +238,79 @@ weighted avg     0.9047    0.8859    0.8868       184
    Parsing hsa_MTI.csv... 42,224 edges
    miRNA→Gene edges: 42,224
 
-🧠 Fold 3 model parameters: 1,583,724
+🧠 Fold 3 model parameters: 1,489,800
 🚀 Bắt đầu training fold 3...
 
 🗓️  Scheduler: onecycle
 Fold 3 | Epoch   1/150
-[Train] Acc=0.0970  P=0.2318  R=0.2534  F1=0.1004
-[Val  ] Acc=0.0541  P=0.2164  R=0.3040  F1=0.0389
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
+[Train] Acc=0.2318  P=0.2066  R=0.1706  F1=0.1409
+[Val  ] Acc=0.2568  P=0.2308  R=0.1895  F1=0.1563
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
 Fold 3 | Epoch   5/150
-[Train] Acc=0.2833  P=0.2896  R=0.4426  F1=0.2082
-[Val  ] Acc=0.3784  P=0.2909  R=0.3951  F1=0.2471
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
+[Train] Acc=0.3803  P=0.2824  R=0.3315  F1=0.2400
+[Val  ] Acc=0.3784  P=0.1754  R=0.3040  F1=0.1511
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
 Fold 3 | Epoch  10/150
-[Train] Acc=0.4197  P=0.4060  R=0.5866  F1=0.3563
-[Val  ] Acc=0.5405  P=0.4314  R=0.6282  F1=0.4256
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.332
-
+[Train] Acc=0.4258  P=0.3301  R=0.4738  F1=0.3104
+[Val  ] Acc=0.4595  P=0.4260  R=0.4900  F1=0.3723
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
 Fold 3 | Epoch  15/150
-[Train] Acc=0.6682  P=0.5383  R=0.7458  F1=0.5823
-[Val  ] Acc=0.7703  P=0.6264  R=0.8996  F1=0.6933
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
+[Train] Acc=0.5364  P=0.4381  R=0.6455  F1=0.4553
+[Val  ] Acc=0.6081  P=0.5192  R=0.8273  F1=0.5371
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
 Fold 3 | Epoch  20/150
-[Train] Acc=0.8167  P=0.6718  R=0.8848  F1=0.7356
-[Val  ] Acc=0.7432  P=0.6135  R=0.7855  F1=0.6505
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
+[Train] Acc=0.7106  P=0.5840  R=0.8261  F1=0.6369
+[Val  ] Acc=0.7027  P=0.6513  R=0.7876  F1=0.6712
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
 Fold 3 | Epoch  25/150
-[Train] Acc=0.9121  P=0.8104  R=0.9683  F1=0.8701
-[Val  ] Acc=0.8243  P=0.6398  R=0.8196  F1=0.7006
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
+[Train] Acc=0.8379  P=0.7169  R=0.9108  F1=0.7786
+[Val  ] Acc=0.7568  P=0.6178  R=0.8036  F1=0.6698
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
 Fold 3 | Epoch  30/150
-[Train] Acc=0.9576  P=0.8950  R=0.9812  F1=0.9325
-[Val  ] Acc=0.8649  P=0.8100  R=0.8498  F1=0.7976
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
+[Train] Acc=0.9000  P=0.8131  R=0.9418  F1=0.8647
+[Val  ] Acc=0.8243  P=0.7819  R=0.8378  F1=0.7713
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
 Fold 3 | Epoch  35/150
-[Train] Acc=0.9848  P=0.9302  R=0.9955  F1=0.9575
-[Val  ] Acc=0.8784  P=0.8034  R=0.8356  F1=0.7839
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
+[Train] Acc=0.9348  P=0.8603  R=0.9750  F1=0.9075
+[Val  ] Acc=0.7973  P=0.6545  R=0.8298  F1=0.7066
 Fold 3 | Epoch  40/150
-[Train] Acc=0.9894  P=0.9724  R=0.9969  F1=0.9841
-[Val  ] Acc=0.8919  P=0.8188  R=0.8396  F1=0.7941
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_3.pt
-Fold 3 | Epoch  45/150
-[Train] Acc=0.9833  P=0.9639  R=0.9951  F1=0.9787
-[Val  ] Acc=0.8649  P=0.7963  R=0.8134  F1=0.7699
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
-Fold 3 | Epoch  50/150
-[Train] Acc=0.9924  P=0.9897  R=0.9957  F1=0.9926
-[Val  ] Acc=0.8919  P=0.8122  R=0.8578  F1=0.7973
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
-Fold 3 | Epoch  55/150
-[Train] Acc=0.9909  P=0.9675  R=0.9957  F1=0.9807
-[Val  ] Acc=0.8649  P=0.7904  R=0.8316  F1=0.7744
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
-Fold 3 | Epoch  60/150
-[Train] Acc=1.0000  P=1.0000  R=1.0000  F1=1.0000
-[Val  ] Acc=0.8784  P=0.8034  R=0.8356  F1=0.7839
-       Global modality weights: gene=0.338, meth=0.331, mirna=0.331
-
-⏹️  Early stopping tại epoch 63 cho Fold 3
+[Train] Acc=0.9621  P=0.9404  R=0.9846  F1=0.9601
+[Val  ] Acc=0.8514  P=0.7777  R=0.8458  F1=0.7681
+⏹️  Early stopping tại epoch 40 cho Fold 3
 
 📊 Đánh giá trên Test set - Fold 3
-[Test ] Acc=0.8579  P=0.6793  R=0.7379  F1=0.7030
-✅ Best val F1: 0.8161
-✅ Test F1:     0.7030
+[Test ] Acc=0.8142  P=0.6556  R=0.7030  F1=0.6735
+✅ Best val F1: 0.7713
+✅ Test F1:     0.6735
 
 📋 Classification Report - Fold 3
               precision    recall  f1-score   support
 
-         CIN     0.9187    0.9040    0.9113       125
-          GS     0.6111    0.5238    0.5641        21
-         MSI     0.8667    0.9286    0.8966        28
-      HM-SNV     0.2500    0.3333    0.2857         3
-         EBV     0.7500    1.0000    0.8571         6
+         CIN     0.9008    0.8720    0.8862       125
+          GS     0.4400    0.5238    0.4783        21
+         MSI     0.8800    0.7857    0.8302        28
+      HM-SNV     0.2000    0.3333    0.2500         3
+         EBV     0.8571    1.0000    0.9231         6
 
-    accuracy                         0.8579       183
-   macro avg     0.6793    0.7379    0.7030       183
-weighted avg     0.8589    0.8579    0.8572       183
+    accuracy                         0.8142       183
+   macro avg     0.6556    0.7030    0.6735       183
+weighted avg     0.8318    0.8142    0.8216       183
 
   📄 Confusion matrix (absolute) saved: /kaggle/working/checkpoints/visualizations/fold_3/confusion_matrix_test_absolute.csv
 
 🔍 Patient Gate Statistics - Fold 3
-   gene : mean=0.3737  std=0.4466  min=0.0003  max=0.9999
-   meth : mean=0.5388  std=0.4142  min=0.0000  max=0.9988
-   mirna: mean=0.0876  std=0.1175  min=0.0001  max=0.6730
+   gene : mean=0.3398  std=0.0533  min=0.2365  max=0.4691
+   meth : mean=0.3145  std=0.0583  min=0.1912  max=0.3852
+   mirna: mean=0.3457  std=0.0671  min=0.2519  max=0.5176
 
 📐 Fold 4: gene=3000, meth=3000, mirna=1000
 
@@ -417,146 +329,76 @@ weighted avg     0.8589    0.8579    0.8572       183
    Parsing hsa_MTI.csv... 41,880 edges
    miRNA→Gene edges: 41,880
 
-🧠 Fold 4 model parameters: 1,583,724
+🧠 Fold 4 model parameters: 1,489,800
 🚀 Bắt đầu training fold 4...
 
 🗓️  Scheduler: onecycle
 Fold 4 | Epoch   1/150
-[Train] Acc=0.2697  P=0.1894  R=0.2287  F1=0.1654
-[Val  ] Acc=0.2973  P=0.2094  R=0.3488  F1=0.2087
-       Global modality weights: gene=0.330, meth=0.341, mirna=0.330
-
+[Train] Acc=0.2015  P=0.1858  R=0.1692  F1=0.1296
+[Val  ] Acc=0.3514  P=0.1602  R=0.1182  F1=0.1322
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
 Fold 4 | Epoch   5/150
-[Train] Acc=0.3470  P=0.3012  R=0.4137  F1=0.2602
-[Val  ] Acc=0.3243  P=0.3323  R=0.4034  F1=0.2633
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.330
-
+[Train] Acc=0.3348  P=0.2791  R=0.3492  F1=0.2436
+[Val  ] Acc=0.2703  P=0.2665  R=0.2198  F1=0.2033
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
 Fold 4 | Epoch  10/150
-[Train] Acc=0.4227  P=0.3610  R=0.5309  F1=0.3406
-[Val  ] Acc=0.4595  P=0.3279  R=0.4576  F1=0.3076
-       Global modality weights: gene=0.330, meth=0.339, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
+[Train] Acc=0.3545  P=0.3279  R=0.4954  F1=0.2907
+[Val  ] Acc=0.4054  P=0.3115  R=0.4194  F1=0.2883
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
 Fold 4 | Epoch  15/150
-[Train] Acc=0.6106  P=0.4851  R=0.7223  F1=0.5347
-[Val  ] Acc=0.6081  P=0.4056  R=0.6090  F1=0.4384
-       Global modality weights: gene=0.330, meth=0.339, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
+[Train] Acc=0.5652  P=0.4302  R=0.6498  F1=0.4588
+[Val  ] Acc=0.5405  P=0.3338  R=0.4322  F1=0.3424
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
 Fold 4 | Epoch  20/150
-[Train] Acc=0.7455  P=0.6368  R=0.8357  F1=0.7000
-[Val  ] Acc=0.7162  P=0.5083  R=0.6410  F1=0.5397
-       Global modality weights: gene=0.330, meth=0.339, mirna=0.331
-
+[Train] Acc=0.7061  P=0.5626  R=0.8009  F1=0.6264
+[Val  ] Acc=0.7568  P=0.4925  R=0.6489  F1=0.5327
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
 Fold 4 | Epoch  25/150
-[Train] Acc=0.8621  P=0.7668  R=0.9452  F1=0.8333
-[Val  ] Acc=0.8108  P=0.5731  R=0.6791  F1=0.6163
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.330
-
+[Train] Acc=0.8000  P=0.6792  R=0.8939  F1=0.7452
+[Val  ] Acc=0.8108  P=0.5498  R=0.6832  F1=0.5893
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
 Fold 4 | Epoch  30/150
-[Train] Acc=0.9091  P=0.8226  R=0.9558  F1=0.8749
-[Val  ] Acc=0.8649  P=0.6141  R=0.7133  F1=0.6552
-       Global modality weights: gene=0.330, meth=0.339, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
+[Train] Acc=0.8909  P=0.8024  R=0.9343  F1=0.8519
+[Val  ] Acc=0.8514  P=0.6071  R=0.7093  F1=0.6489
 Fold 4 | Epoch  35/150
-[Train] Acc=0.9652  P=0.9406  R=0.9876  F1=0.9622
-[Val  ] Acc=0.8649  P=0.6234  R=0.7133  F1=0.6603
-       Global modality weights: gene=0.330, meth=0.339, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
-Fold 4 | Epoch  40/150
-[Train] Acc=0.9758  P=0.9312  R=0.9908  F1=0.9591
-[Val  ] Acc=0.8649  P=0.6113  R=0.7133  F1=0.6530
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
-Fold 4 | Epoch  45/150
-[Train] Acc=0.9833  P=0.9563  R=0.9951  F1=0.9748
-[Val  ] Acc=0.8784  P=0.6366  R=0.7173  F1=0.6685
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-Fold 4 | Epoch  50/150
-[Train] Acc=0.9924  P=0.9696  R=0.9978  F1=0.9833
-[Val  ] Acc=0.8784  P=0.6366  R=0.7173  F1=0.6685
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-Fold 4 | Epoch  55/150
-[Train] Acc=0.9970  P=0.9954  R=0.9991  F1=0.9973
-[Val  ] Acc=0.8514  P=0.6133  R=0.7093  F1=0.6500
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
-Fold 4 | Epoch  60/150
-[Train] Acc=0.9970  P=0.9832  R=0.9991  F1=0.9909
-[Val  ] Acc=0.8919  P=0.6499  R=0.7213  F1=0.6740
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_4.pt
-Fold 4 | Epoch  65/150
-[Train] Acc=0.9985  P=0.9975  R=0.9996  F1=0.9985
-[Val  ] Acc=0.8919  P=0.6620  R=0.7213  F1=0.6813
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-Fold 4 | Epoch  70/150
-[Train] Acc=0.9924  P=0.9763  R=0.9978  F1=0.9867
-[Val  ] Acc=0.8649  P=0.6234  R=0.7133  F1=0.6603
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-Fold 4 | Epoch  75/150
-[Train] Acc=1.0000  P=1.0000  R=1.0000  F1=1.0000
-[Val  ] Acc=0.8919  P=0.6620  R=0.7213  F1=0.6813
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-Fold 4 | Epoch  80/150
-[Train] Acc=1.0000  P=1.0000  R=1.0000  F1=1.0000
-[Val  ] Acc=0.8919  P=0.6583  R=0.7213  F1=0.6795
-       Global modality weights: gene=0.330, meth=0.340, mirna=0.331
-
-⏹️  Early stopping tại epoch 83 cho Fold 4
+[Train] Acc=0.9318  P=0.8697  R=0.9694  F1=0.9132
+[Val  ] Acc=0.8243  P=0.6105  R=0.7013  F1=0.6462
+⏹️  Early stopping tại epoch 39 cho Fold 4
 
 📊 Đánh giá trên Test set - Fold 4
-[Test ] Acc=0.8197  P=0.7080  R=0.7407  F1=0.7192
-✅ Best val F1: 0.6813
-✅ Test F1:     0.7192
+[Test ] Acc=0.7486  P=0.6265  R=0.7516  F1=0.6644
+✅ Best val F1: 0.7003
+✅ Test F1:     0.6644
 
 📋 Classification Report - Fold 4
               precision    recall  f1-score   support
 
-         CIN     0.9035    0.8240    0.8619       125
-          GS     0.5385    0.6667    0.5957        21
+         CIN     0.9348    0.6880    0.7926       125
+          GS     0.4091    0.8571    0.5538        21
          MSI     0.7647    0.9630    0.8525        27
-      HM-SNV     0.3333    0.2500    0.2857         4
-         EBV     1.0000    1.0000    1.0000         6
+      HM-SNV     0.1667    0.2500    0.2000         4
+         EBV     0.8571    1.0000    0.9231         6
 
-    accuracy                         0.8197       183
-   macro avg     0.7080    0.7407    0.7192       183
-weighted avg     0.8318    0.8197    0.8219       183
+    accuracy                         0.7486       183
+   macro avg     0.6265    0.7516    0.6644       183
+weighted avg     0.8300    0.7486    0.7654       183
 
   📄 Confusion matrix (absolute) saved: /kaggle/working/checkpoints/visualizations/fold_4/confusion_matrix_test_absolute.csv
 
 🔍 Patient Gate Statistics - Fold 4
-   gene : mean=0.4157  std=0.4428  min=0.0001  max=1.0000
-   meth : mean=0.4968  std=0.4496  min=0.0000  max=0.9995
-   mirna: mean=0.0875  std=0.2056  min=0.0000  max=0.9823
+   gene : mean=0.3265  std=0.0214  min=0.2923  max=0.3657
+   meth : mean=0.3278  std=0.0444  min=0.2460  max=0.4015
+   mirna: mean=0.3457  std=0.0254  min=0.3025  max=0.3943
 
 📐 Fold 5: gene=3000, meth=3000, mirna=1000
 
@@ -575,133 +417,102 @@ weighted avg     0.8318    0.8197    0.8219       183
    Parsing hsa_MTI.csv... 41,403 edges
    miRNA→Gene edges: 41,403
 
-🧠 Fold 5 model parameters: 1,583,724
+🧠 Fold 5 model parameters: 1,489,800
 🚀 Bắt đầu training fold 5...
 
 🗓️  Scheduler: onecycle
 Fold 5 | Epoch   1/150
-[Train] Acc=0.1848  P=0.1990  R=0.2039  F1=0.0963
-[Val  ] Acc=0.1486  P=0.0324  R=0.2000  F1=0.0557
-       Global modality weights: gene=0.327, meth=0.336, mirna=0.337
-
+[Train] Acc=0.1470  P=0.1910  R=0.2054  F1=0.1014
+[Val  ] Acc=0.0541  P=0.0518  R=0.3040  F1=0.0419
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch   5/150
-[Train] Acc=0.3424  P=0.2987  R=0.3784  F1=0.2684
-[Val  ] Acc=0.5270  P=0.2946  R=0.3241  F1=0.2833
-       Global modality weights: gene=0.327, meth=0.336, mirna=0.337
-
+[Train] Acc=0.2773  P=0.2703  R=0.3019  F1=0.1910
+[Val  ] Acc=0.2297  P=0.1700  R=0.3560  F1=0.1231
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  10/150
-[Train] Acc=0.4439  P=0.3543  R=0.5044  F1=0.3491
-[Val  ] Acc=0.5541  P=0.3618  R=0.4958  F1=0.3887
-       Global modality weights: gene=0.327, meth=0.336, mirna=0.337
-
+[Train] Acc=0.5091  P=0.3724  R=0.5451  F1=0.3739
+[Val  ] Acc=0.5135  P=0.3234  R=0.4554  F1=0.3327
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  15/150
-[Train] Acc=0.5894  P=0.4871  R=0.7148  F1=0.5259
-[Val  ] Acc=0.7027  P=0.4868  R=0.6187  F1=0.5308
-       Global modality weights: gene=0.326, meth=0.337, mirna=0.336
-
-  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
+[Train] Acc=0.5424  P=0.4338  R=0.6721  F1=0.4562
+[Val  ] Acc=0.4730  P=0.4571  R=0.6872  F1=0.4446
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  20/150
-[Train] Acc=0.7742  P=0.6544  R=0.8519  F1=0.7070
-[Val  ] Acc=0.6757  P=0.5088  R=0.6148  F1=0.5393
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.7015  P=0.5674  R=0.7884  F1=0.6179
+[Val  ] Acc=0.6622  P=0.5408  R=0.6432  F1=0.5629
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  25/150
-[Train] Acc=0.8667  P=0.7735  R=0.9347  F1=0.8349
-[Val  ] Acc=0.7973  P=0.6147  R=0.7196  F1=0.6411
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.8106  P=0.6721  R=0.8931  F1=0.7368
+[Val  ] Acc=0.7703  P=0.7734  R=0.7854  F1=0.7415
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  30/150
-[Train] Acc=0.9348  P=0.8883  R=0.9787  F1=0.9266
-[Val  ] Acc=0.8378  P=0.6110  R=0.7094  F1=0.6507
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.8697  P=0.7560  R=0.8885  F1=0.8054
+[Val  ] Acc=0.7568  P=0.5736  R=0.6672  F1=0.6079
 Fold 5 | Epoch  35/150
-[Train] Acc=0.9742  P=0.9442  R=0.9924  F1=0.9670
-[Val  ] Acc=0.8378  P=0.6175  R=0.6729  F1=0.6381
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.9152  P=0.8495  R=0.9649  F1=0.8967
+[Val  ] Acc=0.8243  P=0.8044  R=0.7832  F1=0.7661
+  💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  40/150
-[Train] Acc=0.9788  P=0.9567  R=0.9938  F1=0.9741
-[Val  ] Acc=0.8514  P=0.6319  R=0.6769  F1=0.6468
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.9515  P=0.8918  R=0.9836  F1=0.9313
+[Val  ] Acc=0.7838  P=0.7436  R=0.7347  F1=0.7045
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  45/150
-[Train] Acc=0.9864  P=0.9820  R=0.9917  F1=0.9867
-[Val  ] Acc=0.8514  P=0.6315  R=0.7316  F1=0.6715
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.9682  P=0.9436  R=0.9907  F1=0.9649
+[Val  ] Acc=0.8649  P=0.7231  R=0.8134  F1=0.7585
 Fold 5 | Epoch  50/150
-[Train] Acc=0.9818  P=0.9437  R=0.9781  F1=0.9599
-[Val  ] Acc=0.8919  P=0.6628  R=0.7436  F1=0.6945
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.9667  P=0.9311  R=0.9902  F1=0.9579
+[Val  ] Acc=0.8649  P=0.8333  R=0.8134  F1=0.7967
   💾 Saved checkpoint: /kaggle/working/checkpoints/best_model_fold_5.pt
 Fold 5 | Epoch  55/150
-[Train] Acc=0.9955  P=0.9929  R=0.9987  F1=0.9958
-[Val  ] Acc=0.8919  P=0.6825  R=0.7072  F1=0.6851
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
+[Train] Acc=0.9758  P=0.9243  R=0.9929  F1=0.9561
+[Val  ] Acc=0.8378  P=0.8064  R=0.7507  F1=0.7544
 Fold 5 | Epoch  60/150
-[Train] Acc=0.9909  P=0.9874  R=0.9930  F1=0.9902
-[Val  ] Acc=0.8784  P=0.6494  R=0.7436  F1=0.6802
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
-Fold 5 | Epoch  65/150
-[Train] Acc=1.0000  P=1.0000  R=1.0000  F1=1.0000
-[Val  ] Acc=0.8919  P=0.6825  R=0.7072  F1=0.6851
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
-Fold 5 | Epoch  70/150
-[Train] Acc=1.0000  P=1.0000  R=1.0000  F1=1.0000
-[Val  ] Acc=0.8649  P=0.8353  R=0.7769  F1=0.7818
-       Global modality weights: gene=0.327, meth=0.337, mirna=0.336
-
-⏹️  Early stopping tại epoch 72 cho Fold 5
+[Train] Acc=0.9576  P=0.9125  R=0.9860  F1=0.9441
+[Val  ] Acc=0.8784  P=0.8471  R=0.7992  F1=0.7993
+⏹️  Early stopping tại epoch 62 cho Fold 5
 
 📊 Đánh giá trên Test set - Fold 5
-[Test ] Acc=0.8579  P=0.7687  R=0.7249  F1=0.7379
-✅ Best val F1: 0.7818
-✅ Test F1:     0.7379
+[Test ] Acc=0.8306  P=0.7096  R=0.7243  F1=0.7140
+✅ Best val F1: 0.8199
+✅ Test F1:     0.7140
 
 📋 Classification Report - Fold 5
               precision    recall  f1-score   support
 
-         CIN     0.8968    0.9113    0.9040       124
-          GS     0.5500    0.5000    0.5238        22
-         MSI     0.8966    0.9630    0.9286        27
-      HM-SNV     0.5000    0.2500    0.3333         4
+         CIN     0.9145    0.8629    0.8880       124
+          GS     0.4615    0.5455    0.5000        22
+         MSI     0.8387    0.9630    0.8966        27
+      HM-SNV     0.3333    0.2500    0.2857         4
          EBV     1.0000    1.0000    1.0000         6
 
-    accuracy                         0.8579       183
-   macro avg     0.7687    0.7249    0.7379       183
-weighted avg     0.8498    0.8579    0.8526       183
+    accuracy                         0.8306       183
+   macro avg     0.7096    0.7243    0.7140       183
+weighted avg     0.8390    0.8306    0.8331       183
 
   📄 Confusion matrix (absolute) saved: /kaggle/working/checkpoints/visualizations/fold_5/confusion_matrix_test_absolute.csv
 
 🔍 Patient Gate Statistics - Fold 5
-   gene : mean=0.3878  std=0.4535  min=0.0000  max=0.9998
-   meth : mean=0.5557  std=0.4404  min=0.0000  max=1.0000
-   mirna: mean=0.0566  std=0.0954  min=0.0000  max=0.3979
+   gene : mean=0.4024  std=0.0632  min=0.3308  max=0.5319
+   meth : mean=0.3100  std=0.0484  min=0.2147  max=0.3671
+   mirna: mean=0.2877  std=0.0148  min=0.2534  max=0.3021
 
 📈 5-fold CV summary
-  ACCURACY : mean=0.8517  std=0.0223
-  PRECISION: mean=0.7410  std=0.0487
-  RECALL   : mean=0.7562  std=0.0284
-  F1       : mean=0.7324  std=0.0195
+  ACCURACY : mean=0.8222  std=0.0418
+  PRECISION: mean=0.7021  std=0.0624
+  RECALL   : mean=0.7514  std=0.0354
+  F1       : mean=0.7111  std=0.0416
 
 
   📂 Loading data từ: /kaggle/input/datasets/maivanquan/datn-2025-2/data_final
@@ -734,22 +545,22 @@ weighted avg     0.8498    0.8579    0.8526       183
 📋 Classification Report:
               precision    recall  f1-score   support
 
-         CIN     0.9008    0.8720    0.8862       125
-          GS     0.7368    0.6364    0.6829        22
-         MSI     0.8261    0.7037    0.7600        27
-      HM-SNV     0.5000    0.5000    0.5000         4
-         EBV     0.3529    1.0000    0.5217         6
+         CIN     0.8516    0.8720    0.8617       125
+          GS     0.5000    0.5000    0.5000        22
+         MSI     0.8000    0.5926    0.6809        27
+      HM-SNV     0.6000    0.7500    0.6667         4
+         EBV     0.5556    0.8333    0.6667         6
 
-    accuracy                         0.8152       184
-   macro avg     0.6633    0.7424    0.6702       184
-weighted avg     0.8437    0.8152    0.8231       184
+    accuracy                         0.7826       184
+   macro avg     0.6614    0.7096    0.6752       184
+weighted avg     0.7868    0.7826    0.7813       184
 
-[Test] Acc=0.8152  P=0.6633  R=0.7424  F1=0.6702
+[Test] Acc=0.7826  P=0.6614  R=0.7096  F1=0.6752
 
 🔍 Patient Modality Gate Statistics (N=184)
-   Gene expression     : mean=0.3977  std=0.1047
-   DNA methylation     : mean=0.2946  std=0.0628
-   miRNA               : mean=0.3077  std=0.0419
+   Gene expression     : mean=0.3822  std=0.0707
+   DNA methylation     : mean=0.3010  std=0.0430
+   miRNA               : mean=0.3168  std=0.0277
 
-✔️  Accuracy: 0.8152
-   Correct: 150 / 184
+✔️  Accuracy: 0.7826
+   Correct: 144 / 184

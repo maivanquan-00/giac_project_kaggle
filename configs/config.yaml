@@ -68,14 +68,14 @@ training:
   onecycle_pct_start: 0.1
   onecycle_div_factor: 10.0
   onecycle_final_div_factor: 100.0
-  weight_decay: 5.0e-2   # B3: tăng từ 1e-2 để giảm overfitting
+  weight_decay: 1.0e-2   # D: revert từ 5e-2 → WD quá cao làm gate MLP collapse về uniform
   test_size: 0.2
   focal_gamma: 3.0       # C2: tăng từ 2.0 → focus cứng hơn vào hard/minority examples
   focal_alpha: 1.0
-  label_smoothing: 0.10  # C1: tăng từ 0.05 → giảm overconfidence trên train set
+  label_smoothing: 0.05  # D: revert từ 0.10 → 0.10 quá cao làm gradient yếu giai đoạn đầu
   lambda_modality: 0.00  # không dùng sau B1 (không còn cross-attention)
   lambda_frobenius: 0.01
-  patience: 10           # C1: giảm từ 20 → early stop sớm hơn, tránh memorize
+  patience: 15           # D: tăng từ 10 → 15 (giữa 20 quá dài và 10 quá ngắn)
   seed: 42
   loss_name: "focal"
 
