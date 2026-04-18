@@ -56,11 +56,6 @@ class GIACModel(nn.Module):
             nn.Dropout(gate_dropout),
             nn.Linear(hidden_dim, 3),
         )
-        # E1: khởi tạo bias dựa theo kết quả ablation (được chứng minh bằng 5-fold CV)
-        # gene=0.605, meth=0.643, mirna=0.391 → logit prior = log(score) ≈ [-0.5, 0.5, -1.5]
-        # Sau softmax: meth≈0.48, gene≈0.33, mirna≈0.18 → đúng thứ tự ắt ablation
-        with torch.no_grad():
-            self.modality_gate[-1].bias.data = torch.tensor([-0.5, 0.5, -1.5])
 
         self.classifier = SubtypeClassifier(
             hidden_dim=hidden_dim,
