@@ -6,7 +6,9 @@
 >
 > **Target**: Accuracy ≥ 85%, Macro F1 ≥ 85%
 >
-> **Current Best**: Acc=0.846, Macro F1=0.738 (Phase F)
+> **Current Best**: Acc=0.846, Macro F1=0.738 (Phase F — gate_dropout=0.5)
+> 
+> **Current Config State**: Phase H (gate_dropout=0.2, all else = Phase F)
 
 ---
 
@@ -25,12 +27,12 @@ Multi-omics input (gene: 19930, meth: 23111, mirna: 1881)
     z_gene (B,128) | z_meth (B,128) | z_mirna (B,128)
         │
         ▼ Gated Modality Fusion MLP
-    concat → LayerNorm → Linear(384,128) → GELU → Dropout(0.5) → Linear(128,3) → Softmax
+    concat → LayerNorm → Linear(384,128) → GELU → Dropout(0.2) → Linear(128,3) → Softmax
     = patient_gate (B, 3)  ← per-patient weight
         │
         ▼ Weighted Sum: fused = Σ gate_i * z_i
         │
-        ▼ SubtypeClassifier: Linear(128,64) → ReLU → Dropout → Linear(64,5)
+        ▼ SubtypeClassifier: Linear(128,64) → ReLU → Dropout(0.5) → Linear(64,5)
         │
         ▼ 5-class logits
 ```
@@ -240,7 +242,63 @@ training:
 
 ---
 
-## 🧠 Bài học / Key Insights
+### Phase G — gate_dropout=0.2 + node_emb param group WD=5e-2 (WORSE)
+**Changes từ Phase F**:
+- `gate_dropout`: 0.5 → **0.2** (G1)
+- `train.py`: AdamW param groups — `node_emb WD=5e-2`, rest `WD=1e-2` (G2)
+
+**Lý do thử**: Hypothesis rằng gate dropout 0.5 làm logits nhiễu → softmax uniform. Và node_emb (896K/1.49M params) overfit với 659 samples.
+
+**Results**:
+| Metric | Mean | Std |
+|---|---|---|
+| Accuracy | 0.818 | 0.071 |
+| Macro F1 | 0.715 | 0.062 |
+
+**Root cause thất bại**: G2 (node_emb WD=5e-2) làm node embeddings học chậm hơn trong các fold ngắn (Fold 5 early stop epoch 35, bình thường 50-65). Với patience=15, model dừng trước khi converge. G1 (gate_dropout=0.2) không giúp được nhiều — gate std vẫn như cũ (0.02–0.14).
+
+**Gate stats Fold 5**: gene=0.42 std=0.23, meth=0.30 std=0.16 (volatile, training chưa xong) ❌
+
+**Bài học**: WD cao cho node_emb cần patience cao hơn hoặc epochs nhiều hơn để compensate. Với patience=15 là quá nhạy.
+
+---
+
+### Phase H — gate_dropout=0.2 only (G2 reverted)
+**Changes từ Phase G**: Revert G2 (param groups), chỉ giữ G1
+
+**Config hiện tại (ĐANG DÙNG)**:
+```yaml
+model:
+  gate_dropout: 0.2         # G1: giảm từ 0.5
+
+training:
+  weight_decay: 1e-2        # uniform, không phân nhóm
+  focal_gamma: 3.0
+  label_smoothing: 0.05
+  lambda_frobenius: 0.01
+  patience: 15
+```
+
+**Results**:
+| Metric | Mean | Std |
+|---|---|---|
+| Accuracy | 0.836 | 0.036 |
+| Macro F1 | 0.727 | 0.028 |
+
+**Per-fold**:
+| Fold | Acc | Macro F1 | HM-SNV F1 | GS F1 |
+|---|---|---|---|---|
+| 1 | 0.837 | 0.757 | 0.571 | 0.679 |
+| 2 | 0.902 | 0.763 | 0.333 | 0.857 |
+| 3 | 0.831 | 0.708 | 0.333 | 0.468 |
+| 4 | 0.792 | 0.691 | 0.286 | 0.600 |
+| 5 | 0.820 | 0.715 | 0.333 | 0.510 |
+
+**Gate stats**: vẫn uniform như Phase F (gene≈0.35–0.43, meth≈0.27–0.34, std=0.03–0.16). Gate_dropout=0.2 không giải quyết được vấn đề gate collapse, xác nhận root cause là LayerNorm normalize embeddings về cùng scale.
+
+**Nhận xét**: Phase H (F1=0.727) tệ hơn Phase F (F1=0.738). Gate dropout không phải nguyên nhân gate uniform.
+
+---
 
 ### 1. Destructive Fusion không phải lý do đơn giản
 Ablation 5-fold chứng minh `all < meth_only`, nhưng trong full training, cross-attention + Sparsemax (PatientSparseAttention) lại tạo ra gate ổn định và đúng hướng (meth=0.48–0.57). Gated MLP mới thì gate uniform hơn (std=0.04–0.15 vs 0.41–0.45 của Sparsemax).
@@ -260,16 +318,38 @@ Tắt Frobenius → gate volatile (std=0.38–0.44 extreme) → training instabi
 ### 5. Variance giữa folds là do data composition, không phải training instability
 Fold 3, 4 luôn yếu nhất vì các HM-SNV samples khó nhất rơi vào đó (phân phối bởi StratifiedKFold với seed=42).
 
+### 6. Gate dropout KHÔNG phải nguyên nhân gate uniform (Phase H xác nhận)
+Gate std tương đương ở Phase F (dropout=0.5) và Phase H (dropout=0.2). Root cause thực sự: `output_norm` LayerNorm trong gat_encoder.py normalize cả 3 embeddings về cùng mean/scale → gate MLP không thể phân biệt modalities từ magnitude. Pattern gene > meth > mirna xuất phát từ graph topology (gene có nhiều edges hơn), không phải từ biological signal.
+
+### 7. Thứ tự ưu tiên config đã được xác nhận qua 8 phases
+- `weight_decay=1e-2` ✅ (5e-2 kill gate, 1e-2 balance)
+- `patience=15` ✅ (10 quá ngắn, 20 quá dài)
+- `frobenius=0.01` ✅ (0.00 gây instability)
+- `gate_dropout=0.2 hay 0.5` → neutral (không ảnh hưởng gate std)
+- `focal_gamma=3.0` ✅ (2.0 → 3.0 giúp minority focus)
+
 ---
 
 ## 🚧 Khoảng cách còn lại
 
 **Target**: Acc=85%, F1=85%  
-**Current**: Acc=84.6% ✅ (gần đạt), F1=73.8% ❌ (gap 11.2%)
+**Phase F Best**: Acc=84.6% ✅ (gần đạt), Macro F1=73.8% ❌ (gap 11.2%)
+
+**Tất cả 8 phases đã so sánh**:
+| Phase | Acc | F1 | Std F1 | Notes |
+|---|---|---|---|---|
+| A baseline | 0.830 | 0.698 | 0.052 | Old model, variance FS |
+| B old+ANOVA | 0.852 | 0.732 | 0.020 | Old model, best for Old arch |
+| C new, WD high | 0.822 | 0.711 | 0.042 | Gate collapse |
+| D WD fix | 0.841 | 0.725 | 0.028 | Stable |
+| E bias+noFrob | 0.786 | 0.647 | 0.037 | WORST |
+| **F = best** | **0.846** | **0.738** | 0.038 | Best gated model |
+| G D+nodepargrp | 0.818 | 0.715 | 0.062 | Fold5 fail |
+| H gate_drop=0.2 | 0.836 | 0.727 | 0.028 | Unchanged from F |
 
 **Gap chủ yếu do**:
 1. **HM-SNV**: F1=0.25–0.67 (rất noisy do ít samples)
-2. **GS class**: F1=0.51–0.82 (inconsistent)
+2. **GS class**: F1=0.47–0.86 (inconsistent)
 
 ---
 
@@ -304,10 +384,12 @@ Fold 3, 4 luôn yếu nhất vì các HM-SNV samples khó nhất rơi vào đó 
 | `evaluate.py` | Evaluation + patient gate statistics |
 | `configs/config.yaml` | All hyperparameters |
 | `TestPhaseA.md` | Phase A output (old model baseline) |
-| `TestPhaseB.md` | Phase B–E outputs |
+| `TestPhaseB.md` | Phase B–E outputs (combined) |
 | `TestPhaseD.md` | Phase D output |
 | `TestPhaseE.md` | Phase E output (catastrophic failure) |
-| `TestPhaseNew.md` | Phase F output (current best) |
+| `TestPhaseNew.md` | Phase F output (best) |
+| `TestPhaseG.md` | Phase G output (node_emb paramgroup failure) |
+| `TestPhaseH.md` | Phase H output (gate_dropout=0.2, no improvement) |
 
 ---
 
