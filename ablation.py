@@ -51,6 +51,19 @@ def mask_batch(batch: dict, config: dict) -> dict:
     return masked
 
 
+def _unpack_model_output(model_output):
+    """Support both old/new forward signatures.
+
+    Old style: logits
+    New style: (logits, patient_gate)
+    """
+    if isinstance(model_output, tuple):
+        logits = model_output[0]
+        patient_gate = model_output[1] if len(model_output) > 1 and torch.is_tensor(model_output[1]) else None
+        return logits, patient_gate
+    return model_output, None
+
+
 def train_epoch_ablation(model, loader, optimizer, graph, device, modality_config):
     model.train()
     total_loss = 0.0
@@ -61,8 +74,8 @@ def train_epoch_ablation(model, loader, optimizer, graph, device, modality_confi
         batch = mask_batch(batch, modality_config)
 
         optimizer.zero_grad()
-        logits = model(batch, graph)
-        loss = model.compute_loss(logits, batch["label"])
+        logits, patient_gate = _unpack_model_output(model(batch, graph))
+        loss = model.compute_loss(logits, batch["label"], patient_gate)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
@@ -85,7 +98,7 @@ def eval_epoch_ablation(model, loader, graph, device, modality_config,
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
         batch = mask_batch(batch, modality_config)
-        logits = model(batch, graph)
+        logits, _ = _unpack_model_output(model(batch, graph))
         all_preds.extend(logits.argmax(dim=-1).cpu().tolist())
         all_labels.extend(batch["label"].cpu().tolist())
 
