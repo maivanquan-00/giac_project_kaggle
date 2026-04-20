@@ -50,7 +50,7 @@ model:
   hidden_dim: 128
   gat_heads: 4
   gat_layers: 2
-  gat_dropout: 0.5          # B3: tăng từ 0.4
+  gat_dropout: 0.6          # B3: tăng từ 0.4
   cross_attn_heads: 8       # giữ (không dùng nữa nhưng không xóa để tránh lỗi load ckpt)
   sparsemax_alpha: 1.5
   modality_temperature: 1.0
@@ -76,7 +76,7 @@ training:
   label_smoothing: 0.05  # D: revert từ 0.10 → 0.10 quá cao làm gradient yếu giai đoạn đầu
   lambda_modality: 0.00  # không dùng sau B1 (không còn cross-attention)
   lambda_frobenius: 0.01
-  lambda_entropy: 0.05    # penalty gate collapse, >0.01 đủ mạnh  # khôi phục: giữ gate weights ổn định
+  lambda_entropy: 0.00    # penalty gate collapse, >0.01 đủ mạnh  # khôi phục: giữ gate weights ổn định
   patience: 15           # D: tăng từ 10 → 15 (giữa 20 quá dài và 10 quá ngắn)
   seed: 42
   loss_name: "focal"
