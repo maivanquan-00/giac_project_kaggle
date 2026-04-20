@@ -50,12 +50,12 @@ model:
   hidden_dim: 128
   gat_heads: 4
   gat_layers: 2
-  gat_dropout: 0.6          # B3: tăng từ 0.4
+  gat_dropout: 0.4          # Bỏ chèn ép GAT (trước đó 0.6)
   cross_attn_heads: 8       # giữ (không dùng nữa nhưng không xóa để tránh lỗi load ckpt)
   sparsemax_alpha: 1.5
   modality_temperature: 1.0
   cross_attn_dropout: 0.5   # B3: tăng từ 0.4
-  gate_dropout: 0.6         # B1: dropout cho Gated Fusion MLP
+  gate_dropout: 0.3         # Cho MLP cổng tĩnh tâm học hỏi (trước đó 0.6)
   num_classes: 5
   classifier_dropout: 0.5   # B3: tăng từ 0.5 (giữ nguyên, đã ổn)
   final_dim: 64
@@ -69,10 +69,10 @@ training:
   onecycle_pct_start: 0.1
   onecycle_div_factor: 10.0
   onecycle_final_div_factor: 100.0
-  weight_decay: 1.0e-2   # D: revert từ 5e-2 → WD quá cao làm gate MLP collapse về uniform
+  weight_decay: 1.0e-3   # Nới lỏng nhẹ để mô hình tự tin sửa lỗi
   test_size: 0.2
   focal_gamma: 2.0       # Trở lại 2.0 để tránh gradient bão hòa
-  focal_alpha: 1.0
+  focal_alpha: [1.0, 2.0, 1.5, 4.0, 3.0] # Dồn tài nguyên triệt để cho class thiểu số
   label_smoothing: 0.05  # D: revert từ 0.10 → 0.10 quá cao làm gradient yếu giai đoạn đầu
   lambda_modality: 0.00  # không dùng sau B1 (không còn cross-attention)
   lambda_frobenius: 0.01
