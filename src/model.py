@@ -355,8 +355,8 @@ class GIACModel(nn.Module):
             label_smoothing = cfg_train.get("label_smoothing", 0.0),
         )
         self.lambda2        = cfg_train["lambda_frobenius"]
-        # Entropy penalty weight — lấy từ config hoặc default 0.01
-        self.lambda_entropy = cfg_train.get("lambda_entropy", 0.01)
+        # Entropy penalty weight — lÃ¢Ìy tÆ°Ì€ config hoÄƒÌ£c default 0.01
+        self.lambda_entropy = cfg_train.get("lambda_entropy", 0.0)
         self.sparsemax_alpha = cfg_model.get("sparsemax_alpha", 1.5)
 
     def set_class_weights(self, class_weights: torch.Tensor):
