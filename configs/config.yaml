@@ -68,15 +68,15 @@ training:
   scheduler: "onecycle"
   onecycle_pct_start: 0.1
   onecycle_div_factor: 10.0
-  onecycle_final_div_factor: 100.0
+  onecycle_final_div_factor: 10.0   # Không thả rớt LR quá sâu gãy gradient ở cuối
   weight_decay: 1.0e-3   # Nới lỏng nhẹ để mô hình tự tin sửa lỗi
   test_size: 0.2
   focal_gamma: 2.0       # Trở lại 2.0 để tránh gradient bão hòa
-  focal_alpha: [1.0, 2.0, 1.5, 4.0, 3.0] # Dồn tài nguyên triệt để cho class thiểu số
-  label_smoothing: 0.05  # D: revert từ 0.10 → 0.10 quá cao làm gradient yếu giai đoạn đầu
+  focal_alpha: 1.0       # Trở về 1.0, để hệ thống tự cân bằng
+  label_smoothing: 0.1   # Bật Smoothing lên để loss uyển chuyển mềm mại hơn
   lambda_modality: 0.00  # không dùng sau B1 (không còn cross-attention)
   lambda_frobenius: 0.01
-  lambda_entropy: 0.00    # penalty gate collapse, >0.01 đủ mạnh  # khôi phục: giữ gate weights ổn định
+  lambda_entropy: -0.01  # TRỪ 0.01 để thúc đẩy gate tự tin, phá trạng thái sập phân bố đều
   patience: 15           # D: tăng từ 10 → 15 (giữa 20 quá dài và 10 quá ngắn)
   seed: 42
   loss_name: "focal"
