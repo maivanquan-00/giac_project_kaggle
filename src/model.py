@@ -317,9 +317,9 @@ class GIACModel(nn.Module):
         )
 
         with torch.no_grad():
-            self.modality_gate[-1].bias[0] -= 1.0  
-            self.modality_gate[-1].bias[1] += 1.0  
-            self.modality_gate[-1].bias[2] += 0.5  
+            self.modality_gate[-1].bias[0] += 0.0  # gene giữ nguyên
+            self.modality_gate[-1].bias[1] += 0.3  # meth nhỉnh hơn chút
+            self.modality_gate[-1].bias[2] += 0.1  # mirna nhỉnh hơn xỉu
 
         # Module 3: Shortcut path
         raw_dim = dims["gene"] + dims["meth"] + dims["mirna"]
