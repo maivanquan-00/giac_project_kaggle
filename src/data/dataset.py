@@ -21,8 +21,8 @@ from torch.utils.data import Dataset
 
 
 DEFAULT_PREPROCESS_CFG = {
-    "gene_top_k": 5000,
-    "meth_top_k": 5000,
+    "gene_top_k": 3000,
+    "meth_top_k": 3000,
     "mirna_top_k": 1881,
     "feature_selection_method": "variance",
     "val_size": 0.1,
