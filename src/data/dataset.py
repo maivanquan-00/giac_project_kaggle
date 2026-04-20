@@ -73,7 +73,7 @@ def build_cv_datasets(cfg: dict, seed: int = 42, n_splits: int | None = None):
 
 def load_aligned_data(cfg: dict) -> dict:
     """Load aligned raw arrays once. No preprocessing is applied here."""
-    root = cfg["data_dir"]
+    root = cfg.get("data", {}).get("data_dir", cfg.get("data_dir"))
     print("📂 Loading data từ:", root)
 
     labels = pd.read_csv(os.path.join(root, "final_labels.csv"), index_col=0)

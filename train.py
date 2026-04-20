@@ -1012,7 +1012,7 @@ def main():
     cv_folds = args.cv_folds if args.cv_folds is not None else cfg.get("preprocessing", {}).get("cv_folds", 5)
 
     if cv_folds and cv_folds > 1:
-        fold_packages = build_cv_datasets(cfg["data"], cfg["training"]["seed"], n_splits=cv_folds)
+        fold_packages = build_cv_datasets(cfg, cfg["training"]["seed"], n_splits=cv_folds)
         results = []
         for fold_package in fold_packages:
             fold_no = fold_package["fold"]
@@ -1040,7 +1040,7 @@ def main():
         )
     else:
         datasets, feature_names, dims, metadata = build_datasets(
-            cfg["data"], cfg["training"]["seed"]
+            cfg, cfg["training"]["seed"]
         )
         print(f"\n📐 Feature dims: gene={dims['gene']}, meth={dims['meth']}, mirna={dims['mirna']}")
         fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_name="Single split")

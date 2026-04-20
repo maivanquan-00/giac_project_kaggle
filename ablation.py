@@ -310,7 +310,7 @@ def main():
     n_folds = args.folds
     print(f"📐 Building {n_folds}-fold CV for ablation study...")
     fold_packages = build_cv_datasets(
-        cfg["data"], cfg["training"]["seed"], n_splits=n_folds
+        cfg, cfg["training"]["seed"], n_splits=n_folds
     )
 
     all_fold_results = []
