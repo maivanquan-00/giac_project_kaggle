@@ -14,17 +14,15 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.feature_selection import f_classif
 from sklearn.model_selection import StratifiedKFold, train_test_split
 import torch
 from torch.utils.data import Dataset
 
 
 DEFAULT_PREPROCESS_CFG = {
-    "gene_top_k": 3000,
-    "meth_top_k": 3000,
-    "mirna_top_k": 1000,
-    "feature_selection_method": "variance",
+    "gene_top_k": 4000,
+    "meth_top_k": 4000,
+    "mirna_top_k": 1881,
     "val_size": 0.1,
     "cv_folds": 5,
 }
@@ -178,18 +176,10 @@ def _package_split(
 
 def fit_preprocessor(raw: dict, idx_train: np.ndarray, split_cfg: dict) -> dict:
     """Fit feature selection and normalization on the training subset only."""
-    method = split_cfg.get("feature_selection_method", "variance")
-    y_train = raw["labels"][idx_train]
     return {
-        "gene": _fit_modality_preprocessor(
-            raw["gene"], idx_train, y_train, split_cfg["gene_top_k"], method
-        ),
-        "meth": _fit_modality_preprocessor(
-            raw["meth"], idx_train, y_train, split_cfg["meth_top_k"], method
-        ),
-        "mirna": _fit_modality_preprocessor(
-            raw["mirna"], idx_train, y_train, split_cfg["mirna_top_k"], method
-        ),
+        "gene": _fit_modality_preprocessor(raw["gene"], idx_train, split_cfg["gene_top_k"]),
+        "meth": _fit_modality_preprocessor(raw["meth"], idx_train, split_cfg["meth_top_k"]),
+        "mirna": _fit_modality_preprocessor(raw["mirna"], idx_train, split_cfg["mirna_top_k"]),
     }
 
 
@@ -204,65 +194,28 @@ def select_feature_names(names: List[str], indices: np.ndarray) -> List[str]:
     return [names[i] for i in indices.tolist()]
 
 
-def _fit_modality_preprocessor(
-    X: np.ndarray,
-    idx_train: np.ndarray,
-    y_train: np.ndarray,
-    top_k: int | None,
-    method: str,
-) -> dict:
+def _fit_modality_preprocessor(X: np.ndarray, idx_train: np.ndarray, top_k: int | None) -> dict:
     train_slice = X[idx_train]
-    selected_idx = _select_top_features(train_slice, y_train, top_k, method)
-    train_selected = train_slice[:, selected_idx]
+    n_features = train_slice.shape[1]
 
+    if top_k is None or top_k <= 0 or top_k >= n_features:
+        selected_idx = np.arange(n_features, dtype=np.int64)
+    else:
+        variances = train_slice.var(axis=0, dtype=np.float64)
+        selected_idx = np.argpartition(variances, -top_k)[-top_k:]
+        selected_idx.sort()
+        selected_idx = selected_idx.astype(np.int64, copy=False)
+
+    train_selected = train_slice[:, selected_idx]
     mean = train_selected.mean(axis=0, dtype=np.float64)
     std = train_selected.std(axis=0, dtype=np.float64)
     std = np.where(std < 1e-8, 1.0, std)
 
     return {
-        "indices": selected_idx.astype(np.int64, copy=False),
+        "indices": selected_idx,
         "mean": mean.astype(np.float32, copy=False),
         "std": std.astype(np.float32, copy=False),
     }
-
-
-def _select_top_variance_features(train_slice: np.ndarray, top_k: int | None) -> np.ndarray:
-    n_features = train_slice.shape[1]
-    if top_k is None or top_k <= 0 or top_k >= n_features:
-        return np.arange(n_features, dtype=np.int64)
-
-    variances = train_slice.var(axis=0, dtype=np.float64)
-    top_idx = np.argpartition(variances, -top_k)[-top_k:]
-    top_idx.sort()
-    return top_idx.astype(np.int64, copy=False)
-
-
-def _select_top_anova_features(
-    train_slice: np.ndarray,
-    y_train: np.ndarray,
-    top_k: int | None,
-) -> np.ndarray:
-    n_features = train_slice.shape[1]
-    if top_k is None or top_k <= 0 or top_k >= n_features:
-        return np.arange(n_features, dtype=np.int64)
-
-    f_scores, _ = f_classif(train_slice, y_train)
-    f_scores = np.nan_to_num(f_scores, nan=0.0, posinf=0.0, neginf=0.0)
-    top_idx = np.argpartition(f_scores, -top_k)[-top_k:]
-    top_idx.sort()
-    return top_idx.astype(np.int64, copy=False)
-
-
-def _select_top_features(
-    train_slice: np.ndarray,
-    y_train: np.ndarray,
-    top_k: int | None,
-    method: str,
-) -> np.ndarray:
-    normalized = (method or "variance").lower()
-    if normalized == "anova":
-        return _select_top_anova_features(train_slice, y_train, top_k)
-    return _select_top_variance_features(train_slice, top_k)
 
 
 def _get_preprocess_cfg(cfg: dict) -> dict:
