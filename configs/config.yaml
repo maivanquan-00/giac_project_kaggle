@@ -30,8 +30,8 @@ data:
   cancer_types: ["COAD", "ESCA", "READ", "STAD"]
 
 preprocessing:
-  gene_top_k: 3000
-  meth_top_k: 3000
+  gene_top_k: 4000
+  meth_top_k: 4000
   mirna_top_k: 1881
   feature_selection_method: "anova"
   val_size: 0.1
@@ -39,8 +39,8 @@ preprocessing:
  
 graph:
   emqtl_pval_threshold: 0.05
-  max_edges_per_node: 50
-  max_coregulation_edges: 20   # CpG↔miRNA co-regulation edges per node
+  max_edges_per_node: 20       # GIẢM TỪ 50 -> 20. Tránh việc node thiểu số (GS/HM-SNV) bị hòa tan bởi quá nhiều hàng xóm (CIN)
+  max_coregulation_edges: 10   # Giảm tương đối để giữ đồ thị thưa hơn (trước 20)
   # STRING PPI: chỉ lấy cạnh có combined_score >= ngưỡng này
   ppi_score_threshold: 700
   use_ppi: true       # bật vì đã có file STRING
@@ -49,7 +49,7 @@ graph:
 model:
   hidden_dim: 128
   gat_heads: 4
-  gat_layers: 2
+  gat_layers: 1             # CỰC KỲ QUAN TRỌNG: Giảm từ 2 -> 1 để tránh OVER-SMOOTHING cho GS & HM-SNV
   gat_dropout: 0.4          # Bỏ chèn ép GAT (trước đó 0.6)
   cross_attn_heads: 8       # giữ (không dùng nữa nhưng không xóa để tránh lỗi load ckpt)
   sparsemax_alpha: 1.5
