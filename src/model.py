@@ -279,6 +279,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.data import HeteroData
+from entmax import entmax15, sparsemax
 
 from src.models.gat_encoder import MultiOmicGATModule
 from src.models.classifier import (
@@ -351,6 +352,7 @@ class GIACModel(nn.Module):
         self.lambda2        = cfg_train["lambda_frobenius"]
         # Entropy penalty weight — lấy từ config hoặc default 0.01
         self.lambda_entropy = cfg_train.get("lambda_entropy", 0.01)
+        self.sparsemax_alpha = cfg_model.get("sparsemax_alpha", 1.5)
 
     def set_class_weights(self, class_weights: torch.Tensor):
         normalized = class_weights / class_weights.mean().clamp_min(1e-8)
@@ -362,7 +364,14 @@ class GIACModel(nn.Module):
         z_gene, z_cpg, z_mirna = self.gat_module(batch, graph)
 
         gate_input   = torch.cat([z_gene, z_cpg, z_mirna], dim=-1)
-        patient_gate = F.softmax(self.modality_gate(gate_input), dim=-1)  # (B, 3)
+        gate_logits  = self.modality_gate(gate_input)
+        
+        if self.sparsemax_alpha == 1.0:
+            patient_gate = F.softmax(gate_logits, dim=-1)
+        elif self.sparsemax_alpha == 1.5:
+            patient_gate = entmax15(gate_logits, dim=-1)
+        else:
+            patient_gate = sparsemax(gate_logits, dim=-1)  # (B, 3)
 
         stacked   = torch.stack([z_gene, z_cpg, z_mirna], dim=1)
         fused_gat = (stacked * patient_gate.unsqueeze(-1)).sum(dim=1)
