@@ -316,6 +316,11 @@ class GIACModel(nn.Module):
             nn.Linear(hidden_dim, 3),
         )
 
+        with torch.no_grad():
+            self.modality_gate[-1].bias[0] -= 1.0  
+            self.modality_gate[-1].bias[1] += 1.0  
+            self.modality_gate[-1].bias[2] += 0.5  
+
         # Module 3: Shortcut path
         raw_dim = dims["gene"] + dims["meth"] + dims["mirna"]
         self.shortcut = nn.Sequential(
