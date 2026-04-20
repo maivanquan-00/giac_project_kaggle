@@ -39,8 +39,8 @@ preprocessing:
  
 graph:
   emqtl_pval_threshold: 0.05
-  max_edges_per_node: 50
-  max_coregulation_edges: 20   # CpG↔miRNA co-regulation edges per node
+  max_edges_per_node: 20
+  max_coregulation_edges: 10   # CpG↔miRNA co-regulation edges per node
   # STRING PPI: chỉ lấy cạnh có combined_score >= ngưỡng này
   ppi_score_threshold: 700
   use_ppi: true       # bật vì đã có file STRING
@@ -49,7 +49,7 @@ graph:
 model:
   hidden_dim: 128
   gat_heads: 4
-  gat_layers: 2
+  gat_layers: 1
   gat_dropout: 0.4          # Bỏ chèn ép GAT (trước đó 0.6)
   cross_attn_heads: 8       # giữ (không dùng nữa nhưng không xóa để tránh lỗi load ckpt)
   sparsemax_alpha: 1.5
