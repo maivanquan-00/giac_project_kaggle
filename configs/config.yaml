@@ -68,15 +68,15 @@ training:
   scheduler: "onecycle"
   onecycle_pct_start: 0.1
   onecycle_div_factor: 10.0
-  onecycle_final_div_factor: 10.0   # Không thả rớt LR quá sâu gãy gradient ở cuối
-  weight_decay: 1.0e-3   # Nới lỏng nhẹ để mô hình tự tin sửa lỗi
+  onecycle_final_div_factor: 100.0
+  weight_decay: 1.0e-3
   test_size: 0.2
-  focal_gamma: 2.0       # Trở lại 2.0 để tránh gradient bão hòa
-  focal_alpha: 1.0       # Trở về 1.0, để hệ thống tự cân bằng
-  label_smoothing: 0.1   # Bật Smoothing lên để loss uyển chuyển mềm mại hơn
-  lambda_modality: 0.00  # không dùng sau B1 (không còn cross-attention)
+  focal_gamma: 2.0       # Giữ chuẩn Phase Q
+  focal_alpha: [1.0, 2.0, 1.5, 5.0, 3.0] # Tăng nhẹ trọng số lớp 3 (HM-SNV) để cứu kéo Fold 1 & 3
+  label_smoothing: 0.05  # Trả về 0.05 của Phase Q (chuẩn)
+  lambda_modality: 0.00
   lambda_frobenius: 0.01
-  lambda_entropy: -0.01  # TRỪ 0.01 để thúc đẩy gate tự tin, phá trạng thái sập phân bố đều
+  lambda_entropy: 0.00   # Bỏ ép âm, giữ gate nguyên bản thành công của Phase Q
   patience: 15           # D: tăng từ 10 → 15 (giữa 20 quá dài và 10 quá ngắn)
   seed: 42
   loss_name: "focal"

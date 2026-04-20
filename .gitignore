@@ -1,14 +1,6 @@
 # Logs & experiment notes
-TestPhaseA.md
-TestPhaseB.md
-#TestPhaseC.md
-TestPhaseD.md
-TestPhaseE.md
-TestPhaseF.md
-TestPhaseG.md
-TestPhaseH.md
-TestPhaseI.md
-Test.md
+TestPhase/
+*.md
 
 # Python
 __pycache__/
