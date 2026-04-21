@@ -788,8 +788,10 @@ class GIACModel(nn.Module):
             nn.LayerNorm(hidden_dim),
         )
 
-        # fusion_alpha: init=-1.0 -> sigmoid~0.27, shortcut-first
-        self.fusion_alpha = nn.Parameter(torch.tensor(-1.0))
+        # fusion_alpha: init=0.0 -> sigmoid=0.5, GAT adds 50% of its value initially
+        # Phase 22: additive residual — fused = shortcut + alpha*gat
+        # alpha=0 → pure shortcut (safe fallback), alpha>0 → GAT supplements shortcut
+        self.fusion_alpha = nn.Parameter(torch.tensor(0.0))
 
         # Module 4: Classifier
         self.classifier = SubtypeClassifier(
@@ -853,12 +855,14 @@ class GIACModel(nn.Module):
         x_raw          = torch.cat([batch["gene"], batch["meth"], batch["mirna"]], dim=-1)
         fused_shortcut = self.shortcut(x_raw)
 
-        # Residual mix — Phase 21: alpha constrained to [0.3, 0.7]
-        # Phase 20 bug: alpha stuck at ~0.26 (init=-1.0 và OneCycleLR override 10x LR)
-        # Fix: lower bound 0.3 đảm bảo GAT đóng góp ít nhất 30%
-        # init fusion_alpha=-1.0 → alpha = 0.3 + 0.4*sigmoid(-1.0) = 0.408
-        alpha = 0.3 + 0.4 * torch.sigmoid(self.fusion_alpha)
-        fused = alpha * fused_gat + (1.0 - alpha) * fused_shortcut
+        # Phase 22: additive residual (ResNet-style)
+        # fused = shortcut + alpha*gat  (GAT supplements, not competes)
+        # Gradient to shortcut = 1.0 always — never suppressed by alpha
+        # Gradient to gat     = alpha   — scales with learned contribution
+        # If GAT is noisy: alpha→0, shortcut unharmed. If useful: adds signal.
+        # Phase 20/21 interpolation caused shortcut gradient = 1-alpha → GAT suppressed shortcut.
+        alpha = torch.sigmoid(self.fusion_alpha)
+        fused = fused_shortcut + alpha * fused_gat
 
         logits = self.classifier(fused)
 

@@ -911,7 +911,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             print_metrics(train_metrics, "Train")
             print_metrics(val_metrics, "Val  ")
             alpha = torch.sigmoid(model.fusion_alpha).item()
-            print(f"       fusion_alpha={alpha:.3f}  (GAT={alpha:.2f}, Shortcut={1-alpha:.2f})")
+            print(f"       fusion_alpha={alpha:.3f}  (Shortcut=1.00 + GAT×{alpha:.2f})")
 
 
         if val_metrics["f1"] > best_val_f1:
