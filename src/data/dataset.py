@@ -7,6 +7,14 @@ Key guarantees:
   - Split first, normalize later.
   - Feature selection is fitted only on the training subset.
   - The same preprocessing metadata can be reused for evaluation/checkpoints.
+
+Phase 20 changes:
+  - ANOVA (f_classif) replaces variance for feature selection — supervised,
+    respects class labels, captures signal missed by pure variance.
+  - Stratified minority boost: extra features are selected specifically for
+    GS-vs-rest and HM-SNV-vs-rest, then merged into the main set.
+    This counters ANOVA being dominated by CIN/MSI sample counts.
+  - fit_preprocessor now receives labels so minority boost can be applied.
 """
 
 import os
@@ -14,6 +22,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.feature_selection import f_classif
 from sklearn.model_selection import StratifiedKFold, train_test_split
 import torch
 from torch.utils.data import Dataset
@@ -25,6 +34,14 @@ DEFAULT_PREPROCESS_CFG = {
     "mirna_top_k": 1881,
     "val_size": 0.1,
     "cv_folds": 5,
+    # Extra features selected for minority classes (GS=class1, HM-SNV=class3)
+    # These are merged into the main top-k set (dedup'd), so final size may
+    # be slightly larger than top_k.
+    "minority_boost_gene": 300,
+    "minority_boost_meth": 300,
+    "minority_boost_mirna": 0,
+    # Class indices of the minority classes to boost
+    "minority_classes": [1, 3],  # GS=1, HM-SNV=3
 }
 
 
@@ -137,7 +154,7 @@ def _package_split(
     idx_test: np.ndarray,
     split_cfg: dict,
 ):
-    preprocess = fit_preprocessor(raw, idx_train, split_cfg)
+    preprocess = fit_preprocessor(raw, idx_train, split_cfg, train_labels=raw["labels"][idx_train])
     X_gene = apply_preprocessor(raw["gene"], preprocess["gene"])
     X_meth = apply_preprocessor(raw["meth"], preprocess["meth"])
     X_mirna = apply_preprocessor(raw["mirna"], preprocess["mirna"])
@@ -174,12 +191,35 @@ def _package_split(
     return datasets, feature_names, dims, metadata
 
 
-def fit_preprocessor(raw: dict, idx_train: np.ndarray, split_cfg: dict) -> dict:
-    """Fit feature selection and normalization on the training subset only."""
+def fit_preprocessor(raw: dict, idx_train: np.ndarray, split_cfg: dict,
+                     train_labels: np.ndarray | None = None) -> dict:
+    """Fit feature selection and normalization on the training subset only.
+
+    Uses ANOVA F-test (f_classif) for supervised feature selection.
+    Applies minority-class stratified boost: additional features are selected
+    specifically for GS-vs-rest and HM-SNV-vs-rest, then merged with the main
+    top-k set to ensure minority-relevant features are not filtered out.
+    """
+    minority_classes = split_cfg.get("minority_classes", [1, 3])
     return {
-        "gene": _fit_modality_preprocessor(raw["gene"], idx_train, split_cfg["gene_top_k"]),
-        "meth": _fit_modality_preprocessor(raw["meth"], idx_train, split_cfg["meth_top_k"]),
-        "mirna": _fit_modality_preprocessor(raw["mirna"], idx_train, split_cfg["mirna_top_k"]),
+        "gene": _fit_modality_preprocessor(
+            raw["gene"], idx_train, split_cfg["gene_top_k"],
+            train_labels=train_labels,
+            minority_boost=split_cfg.get("minority_boost_gene", 0),
+            minority_classes=minority_classes,
+        ),
+        "meth": _fit_modality_preprocessor(
+            raw["meth"], idx_train, split_cfg["meth_top_k"],
+            train_labels=train_labels,
+            minority_boost=split_cfg.get("minority_boost_meth", 0),
+            minority_classes=minority_classes,
+        ),
+        "mirna": _fit_modality_preprocessor(
+            raw["mirna"], idx_train, split_cfg["mirna_top_k"],
+            train_labels=train_labels,
+            minority_boost=split_cfg.get("minority_boost_mirna", 0),
+            minority_classes=minority_classes,
+        ),
     }
 
 
@@ -194,17 +234,60 @@ def select_feature_names(names: List[str], indices: np.ndarray) -> List[str]:
     return [names[i] for i in indices.tolist()]
 
 
-def _fit_modality_preprocessor(X: np.ndarray, idx_train: np.ndarray, top_k: int | None) -> dict:
+def _fit_modality_preprocessor(
+    X: np.ndarray,
+    idx_train: np.ndarray,
+    top_k: int | None,
+    train_labels: np.ndarray | None = None,
+    minority_boost: int = 0,
+    minority_classes: list | None = None,
+) -> dict:
+    """Select top-k features by ANOVA F-test, with optional minority-class boost.
+
+    Minority boost:
+      For each minority class c in minority_classes, run a binary ANOVA
+      (class c vs rest). Select the top `minority_boost` features from that
+      binary test and merge them into the main selected set (union, dedup).
+      This ensures features with weak global F-score but strong GS/HM-SNV
+      signal are not dropped by the dominated main ANOVA.
+    """
     train_slice = X[idx_train]
     n_features = train_slice.shape[1]
 
     if top_k is None or top_k <= 0 or top_k >= n_features:
         selected_idx = np.arange(n_features, dtype=np.int64)
     else:
-        variances = train_slice.var(axis=0, dtype=np.float64)
-        selected_idx = np.argpartition(variances, -top_k)[-top_k:]
-        selected_idx.sort()
-        selected_idx = selected_idx.astype(np.int64, copy=False)
+        # Primary ANOVA: all classes
+        if train_labels is not None:
+            f_scores, _ = f_classif(train_slice, train_labels)
+            f_scores = np.nan_to_num(f_scores, nan=0.0, posinf=0.0)
+            selected_idx = np.argpartition(f_scores, -top_k)[-top_k:]
+        else:
+            # Fallback to variance if no labels provided
+            variances = train_slice.var(axis=0, dtype=np.float64)
+            selected_idx = np.argpartition(variances, -top_k)[-top_k:]
+        selected_idx = np.sort(selected_idx).astype(np.int64)
+
+        # Minority-class stratified boost
+        if (minority_boost > 0 and train_labels is not None
+                and minority_classes is not None):
+            extra_idx_list = []
+            for cls in minority_classes:
+                mask = (train_labels == cls).astype(np.float32)
+                # Skip if too few positives for a meaningful test
+                if mask.sum() < 3:
+                    continue
+                binary_labels = (train_labels == cls).astype(np.int64)
+                f_bin, _ = f_classif(train_slice, binary_labels)
+                f_bin = np.nan_to_num(f_bin, nan=0.0, posinf=0.0)
+                boost_k = min(minority_boost, n_features)
+                extra = np.argpartition(f_bin, -boost_k)[-boost_k:]
+                extra_idx_list.append(extra)
+            if extra_idx_list:
+                all_extra = np.concatenate(extra_idx_list)
+                selected_idx = np.sort(
+                    np.unique(np.concatenate([selected_idx, all_extra]))
+                ).astype(np.int64)
 
     train_selected = train_slice[:, selected_idx]
     mean = train_selected.mean(axis=0, dtype=np.float64)

@@ -1,65 +1,50 @@
 # ============================================================
-#  Toàn bộ hyperparameter của project
+#  Toan bo hyperparameter cua project
+#  Phase 20 -- Fix gate collapse + Stratified minority ANOVA
 # ============================================================
 
 data:
-  # ── Đường dẫn data_final ──────────────────────────────
   data_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
-  #   final_labels.csv          : Patient_ID, Cancer_Type, Clean_Subtype, Target_Label
-  #   final_gene.csv            : index=Patient_ID, columns=gene_names
-  #   final_methylation.csv     : index=Patient_ID, columns=CpG_names
-  #   final_mirna.csv           : index=Patient_ID, columns=miRNA_names
-
-  # ── Đường dẫn Heterogeneous Graph ─────────────────────────
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
-  #   graph_dir/
-  #     9606.protein.links.v12.0.txt    ← STRING PPI
-  #     9606.protein.aliases.v12.0.txt  ← map ENSP → gene symbol
-  #     9606.protein.info.v12.0.txt     ← gene info (backup mapping)
-  #     hsa_MTI.csv                     ← miRTarBase (miRNA → gene)
-  #     GIAC_main/
-  #       TCGA_emQTL_COAD.txt
-  #       TCGA_emQTL_ESCA.txt
-  #       TCGA_emQTL_READ.txt
-  #       TCGA_emQTL_STAD.txt
-  #       TCGA_hallmark_pathway_meQTL_COAD.txt  (chưa có cũng không sao)
-  #       TCGA_hallmark_pathway_meQTL_ESCA.txt
-  #       TCGA_hallmark_pathway_meQTL_READ.txt
-  #       TCGA_hallmark_pathway_meQTL_STAD.txt
-
   cancer_types: ["COAD", "ESCA", "READ", "STAD"]
 
 preprocessing:
-  gene_top_k: 4000
-  meth_top_k: 4000
+  gene_top_k: 3500
+  meth_top_k: 3500
   mirna_top_k: 1881
   feature_selection_method: "anova"
   val_size: 0.1
   cv_folds: 5
- 
+  # Minority-class stratified boost (Phase 20 new)
+  # Binary ANOVA (class c vs rest) for each minority class.
+  # Top-N features merged (union) into main set. Actual dims = top_k + unique extras.
+  minority_boost_gene: 300
+  minority_boost_meth: 300
+  minority_boost_mirna: 0
+  minority_classes: [1, 3]   # GS=class1, HM-SNV=class3
+
 graph:
   emqtl_pval_threshold: 0.05
   max_edges_per_node: 20
-  max_coregulation_edges: 10   # CpG↔miRNA co-regulation edges per node
-  # STRING PPI: chỉ lấy cạnh có combined_score >= ngưỡng này
+  max_coregulation_edges: 10
   ppi_score_threshold: 700
-  use_ppi: true       # bật vì đã có file STRING
-  use_mirna: true     # bật vì đã có hsa_MTI.csv
- 
+  use_ppi: true
+  use_mirna: true
+
 model:
   hidden_dim: 128
   gat_heads: 4
   gat_layers: 1
-  gat_dropout: 0.4          # Bỏ chèn ép GAT (trước đó 0.6)
-  cross_attn_heads: 8       # giữ (không dùng nữa nhưng không xóa để tránh lỗi load ckpt)
+  gat_dropout: 0.4
+  cross_attn_heads: 8
   sparsemax_alpha: 1.5
   modality_temperature: 1.0
-  cross_attn_dropout: 0.5   # B3: tăng từ 0.4
-  gate_dropout: 0.3         # Cho MLP cổng tĩnh tâm học hỏi (trước đó 0.6)
+  cross_attn_dropout: 0.5
+  gate_dropout: 0.3
   num_classes: 5
-  classifier_dropout: 0.5   # B3: tăng từ 0.5 (giữ nguyên, đã ổn)
+  classifier_dropout: 0.5
   final_dim: 64
- 
+
 training:
   epochs: 150
   batch_size: 32
@@ -71,19 +56,19 @@ training:
   onecycle_final_div_factor: 100.0
   weight_decay: 1.0e-3
   test_size: 0.2
-  focal_gamma: 2.0       # Giữ chuẩn Phase Q
-  focal_alpha: [1.0, 2.0, 1.5, 5.0, 3.0] # Tăng nhẹ trọng số lớp 3 (HM-SNV) để cứu kéo Fold 1 & 3
-  label_smoothing: 0.05  # Trả về 0.05 của Phase Q (chuẩn)
+  focal_gamma: 2.0
+  focal_alpha: [1.0, 2.0, 1.5, 4.0, 3.0]
+  label_smoothing: 0.05
   lambda_modality: 0.00
   lambda_frobenius: 0.01
-  lambda_entropy: 0.00   # Bỏ ép âm, giữ gate nguyên bản thành công của Phase Q
-  patience: 15           # D: tăng từ 10 → 15 (giữa 20 quá dài và 10 quá ngắn)
+  lambda_entropy: 0.00
+  patience: 15
   seed: 42
   loss_name: "focal"
- 
+
 logging:
   save_dir: "/kaggle/working/checkpoints/"
   log_interval: 5
- 
+
 interpretability:
   top_k_features: 50
