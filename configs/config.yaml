@@ -42,6 +42,10 @@ model:
   num_classes: 5
   classifier_dropout: 0.5
   final_dim: 64
+  # Phase 24 Ablation:
+  # fusion_alpha=1.0 -> Pure GAT (tắt Shortcut)
+  # fusion_alpha=0.0 -> Pure Shortcut (tắt GAT)
+  fusion_alpha: 1.0
 
 training:
   epochs: 150

@@ -787,9 +787,10 @@ class GIACModel(nn.Module):
         )
 
         # Phase 23: fusion_alpha FIXED = 0.5 (không còn learnable).
-        # Kết luận từ Phase 20/21/22: alpha không học được hữu ích,
-        # chỉ thêm variance. Fixed 0.5 đơn giản và ổn định nhất.
-        self.register_buffer("fusion_alpha_fixed", torch.tensor(0.5))
+        # Phase 24 (Ablation): Cho phép config fusion_alpha để check GAT vs Shortcut.
+        # Nếu không có trong config, mặc định 0.5.
+        fusion_alpha_val = cfg_model.get("fusion_alpha", 0.5)
+        self.register_buffer("fusion_alpha_fixed", torch.tensor(float(fusion_alpha_val)))
 
         # Module 4: Classifier
         self.classifier = SubtypeClassifier(
