@@ -260,7 +260,8 @@ def _fit_modality_preprocessor(
         # Primary ANOVA: all classes
         if train_labels is not None:
             f_scores, _ = f_classif(train_slice, train_labels)
-            f_scores = np.nan_to_num(f_scores, nan=0.0, posinf=0.0)
+            # nan: constant features → score 0 (exclude). posinf: perfect discriminators → keep highest
+            f_scores = np.nan_to_num(f_scores, nan=0.0, posinf=1e10, neginf=0.0)
             selected_idx = np.argpartition(f_scores, -top_k)[-top_k:]
         else:
             # Fallback to variance if no labels provided
@@ -279,7 +280,7 @@ def _fit_modality_preprocessor(
                     continue
                 binary_labels = (train_labels == cls).astype(np.int64)
                 f_bin, _ = f_classif(train_slice, binary_labels)
-                f_bin = np.nan_to_num(f_bin, nan=0.0, posinf=0.0)
+                f_bin = np.nan_to_num(f_bin, nan=0.0, posinf=1e10, neginf=0.0)
                 boost_k = min(minority_boost, n_features)
                 extra = np.argpartition(f_bin, -boost_k)[-boost_k:]
                 extra_idx_list.append(extra)
