@@ -1,6 +1,6 @@
 # ============================================================
 #  Toan bo hyperparameter cua project
-#  Phase 20 -- Fix gate collapse + Stratified minority ANOVA
+#  Phase 21 -- Fix fusion_alpha degeneracy + stronger minority focal
 # ============================================================
 
 data:
@@ -57,12 +57,12 @@ training:
   weight_decay: 1.0e-3
   test_size: 0.2
   focal_gamma: 2.0
-  focal_alpha: [1.0, 2.0, 1.5, 4.0, 3.0]
+  focal_alpha: [1.0, 3.0, 1.5, 6.0, 3.0]
   label_smoothing: 0.05
   lambda_modality: 0.00
   lambda_frobenius: 0.01
   lambda_entropy: 0.00
-  patience: 15
+  patience: 20
   seed: 42
   loss_name: "focal"
 

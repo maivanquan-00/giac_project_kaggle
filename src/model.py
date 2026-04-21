@@ -853,8 +853,11 @@ class GIACModel(nn.Module):
         x_raw          = torch.cat([batch["gene"], batch["meth"], batch["mirna"]], dim=-1)
         fused_shortcut = self.shortcut(x_raw)
 
-        # Residual mix
-        alpha = torch.sigmoid(self.fusion_alpha)
+        # Residual mix — Phase 21: alpha constrained to [0.3, 0.7]
+        # Phase 20 bug: alpha stuck at ~0.26 (init=-1.0 và OneCycleLR override 10x LR)
+        # Fix: lower bound 0.3 đảm bảo GAT đóng góp ít nhất 30%
+        # init fusion_alpha=-1.0 → alpha = 0.3 + 0.4*sigmoid(-1.0) = 0.408
+        alpha = 0.3 + 0.4 * torch.sigmoid(self.fusion_alpha)
         fused = alpha * fused_gat + (1.0 - alpha) * fused_shortcut
 
         logits = self.classifier(fused)

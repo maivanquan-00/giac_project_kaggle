@@ -833,8 +833,9 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
 
     # fusion_alpha cần lr cao hơn 10x để gradient không quá nhỏ
-    _base_lr = cfg["training"]["learning_rate"]
-    _wd      = cfg["training"]["weight_decay"]
+    _base_lr     = cfg["training"]["learning_rate"]
+    _base_max_lr = cfg["training"].get("max_learning_rate", _base_lr * 5.0)
+    _wd          = cfg["training"]["weight_decay"]
     optimizer = torch.optim.AdamW([
         {"params": [p for n, p in model.named_parameters()
                     if "fusion_alpha" not in n],
@@ -847,7 +848,9 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     if scheduler_name == "onecycle":
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
-            max_lr=cfg["training"].get("max_learning_rate", cfg["training"]["learning_rate"] * 5.0),
+            # Phase 21 fix: max_lr dạng list để OneCycleLR giữ nguyên tỉ lệ 10x
+            # Dùng scalar max_lr sẽ override tất cả group về cùng schedule
+            max_lr=[_base_max_lr, _base_max_lr * 10],
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=max(len(train_loader), 1),
             pct_start=cfg["training"].get("onecycle_pct_start", 0.1),
