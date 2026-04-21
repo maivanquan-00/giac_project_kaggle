@@ -1,6 +1,6 @@
 # ============================================================
 #  Toan bo hyperparameter cua project
-#  Phase 22 -- Additive residual fusion + tuned minority focal
+#  Phase 23 -- Wave 1: fix val/test gap + slim shortcut + fixed fusion
 # ============================================================
 
 data:
@@ -13,13 +13,11 @@ preprocessing:
   meth_top_k: 3500
   mirna_top_k: 1881
   feature_selection_method: "anova"
-  val_size: 0.1
+  val_size: 0.15
   cv_folds: 5
-  # Minority-class stratified boost (Phase 20 new)
-  # Binary ANOVA (class c vs rest) for each minority class.
-  # Top-N features merged (union) into main set. Actual dims = top_k + unique extras.
-  minority_boost_gene: 300
-  minority_boost_meth: 300
+  # Phase 23: giảm minority_boost_gene, tắt boost meth (3-4 positives không đủ tin cậy)
+  minority_boost_gene: 200
+  minority_boost_meth: 0
   minority_boost_mirna: 0
   minority_classes: [1, 3]   # GS=class1, HM-SNV=class3
 
@@ -62,7 +60,11 @@ training:
   lambda_modality: 0.00
   lambda_frobenius: 0.01
   lambda_entropy: 0.00
-  patience: 20
+  # Phase 23: patience giảm 20 → 12 tránh lưu checkpoint overfit
+  patience: 12
+  # Phase 23: chọn best checkpoint theo val LOSS (lower=better) thay vì val F1
+  # F1 quá noisy với HM-SNV 1-2 samples/val. Loss continuous, ổn định hơn.
+  model_selection_metric: "val_loss"
   seed: 42
   loss_name: "focal"
 

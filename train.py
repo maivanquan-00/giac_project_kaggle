@@ -768,14 +768,20 @@ def train_epoch(model, loader, optimizer, graph, device, scheduler=None):
 def eval_epoch(model, loader, graph, device, return_predictions: bool = False):
     model.eval()
     all_preds, all_labels = [], []
+    total_loss = 0.0
+    n_batches = 0
 
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
-        logits, _ = model(batch, graph)
+        logits, patient_gate = model(batch, graph)
+        loss = model.compute_loss(logits, batch["label"], patient_gate)
+        total_loss += loss.item()
+        n_batches += 1
         all_preds.extend(logits.argmax(dim=-1).cpu().tolist())
         all_labels.extend(batch["label"].cpu().tolist())
 
     metrics = compute_metrics(all_labels, all_preds)
+    metrics["loss"] = total_loss / max(n_batches, 1)
     if return_predictions:
         return metrics, all_labels, all_preds
     return metrics
@@ -832,25 +838,21 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device)
     )
 
-    # fusion_alpha cần lr cao hơn 10x để gradient không quá nhỏ
+    # Phase 23: fusion_alpha bị bỏ (FIXED=0.5), không cần param group riêng.
     _base_lr     = cfg["training"]["learning_rate"]
     _base_max_lr = cfg["training"].get("max_learning_rate", _base_lr * 5.0)
     _wd          = cfg["training"]["weight_decay"]
-    optimizer = torch.optim.AdamW([
-        {"params": [p for n, p in model.named_parameters()
-                    if "fusion_alpha" not in n],
-         "lr": _base_lr, "weight_decay": _wd},
-        {"params": [model.fusion_alpha],
-         "lr": _base_lr * 10, "weight_decay": 0.0},
-    ])
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=_base_lr,
+        weight_decay=_wd,
+    )
 
     scheduler_name = cfg["training"].get("scheduler", "onecycle").lower()
     if scheduler_name == "onecycle":
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
-            # Phase 21 fix: max_lr dạng list để OneCycleLR giữ nguyên tỉ lệ 10x
-            # Dùng scalar max_lr sẽ override tất cả group về cùng schedule
-            max_lr=[_base_max_lr, _base_max_lr * 10],
+            max_lr=_base_max_lr,
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=max(len(train_loader), 1),
             pct_start=cfg["training"].get("onecycle_pct_start", 0.1),
@@ -871,13 +873,18 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"🚀 Bắt đầu training {fold_name.lower()}...\n")
     print(f"🗓️  Scheduler: {scheduler_name}")
 
+    # Phase 23: chọn best checkpoint theo val LOSS (lower=better).
+    # F1 quá noisy với 1-2 HM-SNV samples ở val → gap val-test 15%.
+    # Loss continuous, ổn định hơn cho minority.
+    selection_metric = cfg["training"].get("model_selection_metric", "val_loss")
+    best_val_loss = float("inf")
     best_val_f1 = 0.0
     save_dir = cfg["logging"]["save_dir"]
     viz_dir = os.path.join(save_dir, "visualizations", fold_name.lower().replace(" ", "_"))
     ensure_dir(viz_dir)
     ckpt_name = "best_model.pt" if fold_name == "Single split" else f"best_model_{fold_name.lower().replace(' ', '_')}.pt"
     ckpt_path = os.path.join(save_dir, ckpt_name)
-    history = {"train_loss": [], "train_f1": [], "val_f1": []}
+    history = {"train_loss": [], "train_f1": [], "val_f1": [], "val_loss": []}
 
     plot_split_class_distribution(
         {
@@ -905,17 +912,29 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         history["train_loss"].append(train_metrics["loss"])
         history["train_f1"].append(train_metrics["f1"])
         history["val_f1"].append(val_metrics["f1"])
+        history["val_loss"].append(val_metrics["loss"])
 
         if epoch % cfg["logging"]["log_interval"] == 0 or epoch == 1:
             print(f"{fold_name} | Epoch {epoch:3d}/{cfg['training']['epochs']}")
             print_metrics(train_metrics, "Train")
             print_metrics(val_metrics, "Val  ")
-            alpha = torch.sigmoid(model.fusion_alpha).item()
-            print(f"       fusion_alpha={alpha:.3f}  (Shortcut=1.00 + GAT×{alpha:.2f})")
+            print(f"       val_loss={val_metrics['loss']:.4f}  (selection metric)")
 
+        # Phase 23: selection theo val_loss (lower=better).
+        # Vẫn track best_val_f1 để log, nhưng không dùng để chọn checkpoint.
+        improved_for_ckpt = False
+        if selection_metric == "val_loss":
+            if val_metrics["loss"] < best_val_loss:
+                best_val_loss = val_metrics["loss"]
+                improved_for_ckpt = True
+        else:  # fallback: val F1
+            if val_metrics["f1"] > best_val_f1:
+                improved_for_ckpt = True
 
         if val_metrics["f1"] > best_val_f1:
             best_val_f1 = val_metrics["f1"]
+
+        if improved_for_ckpt:
             save_checkpoint(
                 model,
                 optimizer,
@@ -933,7 +952,9 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
                 },
             )
 
-        if early_stop.step(val_metrics["f1"]):
+        # EarlyStopping: score cao là tốt -> dùng -val_loss để đồng nhất với selection
+        es_score = -val_metrics["loss"] if selection_metric == "val_loss" else val_metrics["f1"]
+        if early_stop.step(es_score):
             print(f"⏹️  Early stopping tại epoch {epoch} cho {fold_name}")
             break
 
@@ -945,8 +966,9 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
 
     print(f"\n📊 Đánh giá trên Test set - {fold_name}")
     print_metrics(test_metrics, "Test ")
-    print(f"✅ Best val F1: {best_val_f1:.4f}")
-    print(f"✅ Test F1:     {test_metrics['f1']:.4f}")
+    print(f"✅ Best val F1:   {best_val_f1:.4f}")
+    print(f"✅ Best val loss: {best_val_loss:.4f}")
+    print(f"✅ Test F1:       {test_metrics['f1']:.4f}")
 
     plot_training_curves(
         history,

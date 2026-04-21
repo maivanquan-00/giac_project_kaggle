@@ -114,6 +114,8 @@ def plot_training_curves(history: dict, path: str, title: str):
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
     axes[0].plot(epochs, history["train_loss"], label="Train loss")
+    if "val_loss" in history and len(history["val_loss"]) == len(epochs):
+        axes[0].plot(epochs, history["val_loss"], label="Val loss")
     axes[0].set_title(f"{title} - Loss")
     axes[0].set_xlabel("Epoch")
     axes[0].set_ylabel("Loss")

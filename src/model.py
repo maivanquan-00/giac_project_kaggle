@@ -694,18 +694,14 @@
 """
 model.py -- GIAC model: Gated Fusion + Shortcut path.
 
-Phase 20 change -- Fix gate collapse detected in Phase 19:
-  Problem: LayerNorm(z_gene, z_cpg, z_mirna) normalizes all 3 embeddings to
-  the same mean/scale, so the gate MLP cannot distinguish modalities by
-  magnitude => gate std = 0.000 in 3/5 folds (Phase 19 log).
-
-  Fix: Add a second gate branch (gate_raw_proj) fed by raw modality summary
-  statistics [mean, std, l2norm] computed BEFORE the GAT encoder and without
-  LayerNorm. These stats retain real per-patient variance across modalities.
-
-  Combined gate logits = gate_from_gat + gate_from_raw
-  gate_from_gat: existing path (LayerNorm -> Linear -> GELU -> Dropout -> Linear)
-  gate_from_raw: new path (Linear(9,16) -> GELU -> Linear(16,3)), no LayerNorm
+Phase 23 (Wave 1) changes:
+  1. Shortcut slim: Linear(raw_dim -> H*2 -> H) -> Linear(raw_dim -> H)
+     + input Dropout(0.3). Shortcut cũ chiếm 61% tổng params (2.5M/4M) và
+     là nguồn overfitting chính (Train F1=1.0 từ epoch 25, Val-Test gap 15%).
+  2. Fusion alpha FIXED = 0.5 (bỏ learnable fusion_alpha).
+     Phase 20/21/22 đã chứng minh alpha không học được hữu ích — chỉ thêm
+     variance. Fixed 0.5 = interpolation cân bằng, gradient ổn định.
+  3. Giữ gate_raw_proj (Phase 20 fix) để gate không collapse.
 """
 
 import torch
@@ -778,20 +774,22 @@ class GIACModel(nn.Module):
             nn.Linear(16, 3),
         )
 
-        # Module 3: Shortcut path
+        # Module 3: Shortcut path (Phase 23 slim version)
+        # Cũ: raw_dim -> hidden*2 -> hidden (2.5M params, overfit nặng)
+        # Mới: raw_dim -> hidden (1.2M params) + input dropout chống overfit
         raw_dim = dims["gene"] + dims["meth"] + dims["mirna"]
         self.shortcut = nn.Sequential(
-            nn.Linear(raw_dim, hidden_dim * 2),
+            nn.Dropout(0.3),
+            nn.Linear(raw_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.GELU(),
             nn.Dropout(gate_dropout),
-            nn.Linear(hidden_dim * 2, hidden_dim),
-            nn.LayerNorm(hidden_dim),
         )
 
-        # fusion_alpha: init=0.0 -> sigmoid=0.5, GAT adds 50% of its value initially
-        # Phase 22: additive residual — fused = shortcut + alpha*gat
-        # alpha=0 → pure shortcut (safe fallback), alpha>0 → GAT supplements shortcut
-        self.fusion_alpha = nn.Parameter(torch.tensor(0.0))
+        # Phase 23: fusion_alpha FIXED = 0.5 (không còn learnable).
+        # Kết luận từ Phase 20/21/22: alpha không học được hữu ích,
+        # chỉ thêm variance. Fixed 0.5 đơn giản và ổn định nhất.
+        self.register_buffer("fusion_alpha_fixed", torch.tensor(0.5))
 
         # Module 4: Classifier
         self.classifier = SubtypeClassifier(
@@ -855,14 +853,10 @@ class GIACModel(nn.Module):
         x_raw          = torch.cat([batch["gene"], batch["meth"], batch["mirna"]], dim=-1)
         fused_shortcut = self.shortcut(x_raw)
 
-        # Phase 22: additive residual (ResNet-style)
-        # fused = shortcut + alpha*gat  (GAT supplements, not competes)
-        # Gradient to shortcut = 1.0 always — never suppressed by alpha
-        # Gradient to gat     = alpha   — scales with learned contribution
-        # If GAT is noisy: alpha→0, shortcut unharmed. If useful: adds signal.
-        # Phase 20/21 interpolation caused shortcut gradient = 1-alpha → GAT suppressed shortcut.
-        alpha = torch.sigmoid(self.fusion_alpha)
-        fused = fused_shortcut + alpha * fused_gat
+        # Phase 23: convex interpolation với alpha FIXED = 0.5
+        # Không còn learnable alpha → loại bỏ 1 nguồn variance.
+        alpha = self.fusion_alpha_fixed
+        fused = alpha * fused_gat + (1.0 - alpha) * fused_shortcut
 
         logits = self.classifier(fused)
 
