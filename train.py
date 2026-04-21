@@ -92,7 +92,7 @@
 #     for batch in loader:
 #         batch = {k: v.to(device) for k, v in batch.items()}
 #         _, _, weights = model(batch, graph, return_interpretability=True)
-#         all_gates.append(weights["patient"].cpu())
+#         all_gates.append(weights["patient_gate"].cpu())
 #     gates = torch.cat(all_gates, dim=0)  # (N, 3)
 #     return {
 #         "mean": gates.mean(dim=0).tolist(),
@@ -440,7 +440,7 @@
 #     for batch in loader:
 #         batch = {k: v.to(device) for k, v in batch.items()}
 #         _, _, weights = model(batch, graph, return_interpretability=True)
-#         all_gates.append(weights["patient"].cpu())
+#         all_gates.append(weights["patient_gate"].cpu())
 #     gates = torch.cat(all_gates, dim=0)  # (N, 3)
 #     return {
 #         "mean": gates.mean(dim=0).tolist(),
@@ -795,7 +795,7 @@ def collect_gate_stats(model, loader, graph, device):
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
         _, _, weights = model(batch, graph, return_interpretability=True)
-        all_gates.append(weights["patient"].cpu())
+        all_gates.append(weights["patient_gate"].cpu())
     gates = torch.cat(all_gates, dim=0)  # (N, 3)
     return {
         "mean": gates.mean(dim=0).tolist(),

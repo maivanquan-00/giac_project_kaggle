@@ -692,16 +692,23 @@
 #         return loss_cls + loss_frob
 
 """
-model.py -- GIAC model: Gated Fusion + Shortcut path.
+model.py -- GIAC: HeteroGAT + Sparse Cross-Attention
 
-Phase 23 (Wave 1) changes:
-  1. Shortcut slim: Linear(raw_dim -> H*2 -> H) -> Linear(raw_dim -> H)
-     + input Dropout(0.3). Shortcut cũ chiếm 61% tổng params (2.5M/4M) và
-     là nguồn overfitting chính (Train F1=1.0 từ epoch 25, Val-Test gap 15%).
-  2. Fusion alpha FIXED = 0.5 (bỏ learnable fusion_alpha).
-     Phase 20/21/22 đã chứng minh alpha không học được hữu ích — chỉ thêm
-     variance. Fixed 0.5 = interpolation cân bằng, gradient ổn định.
-  3. Giữ gate_raw_proj (Phase 20 fix) để gate không collapse.
+Architecture:
+  1. HeteroGAT: graph-informed per-modality embeddings
+     z_gene, z_meth, z_mirna  (B, H)
+  2. Sparse Cross-Attention: inter-modality information exchange
+     Diagonal masked → chỉ cross-modality signal
+     Output: z'_gene, z'_meth, z'_mirna + attn_matrix (B, 3, 3)
+  3. entmax15 Patient Gate: sparse modality weights per patient (B, 3)
+  4. Weighted sum → Classifier → logits (B, 5)
+
+Explainability (3 tầng):
+  - attn_matrix[b,i,j]: modality i attend to j cho patient b
+  - patient_gate[b]:    modality nào dominant cho patient b
+  - GAT attention:      edge nào trong graph quan trọng (qua gat_module)
+
+Không có Shortcut path: mọi explanation đến từ graph + attention.
 """
 
 import torch
@@ -716,35 +723,20 @@ from src.models.classifier import (
     SubtypeClassifier,
     frobenius_regularization_loss,
 )
-
-
-def _raw_modality_stats(x: torch.Tensor) -> torch.Tensor:
-    """Compute [mean, std, l2norm/sqrt(F)] for one modality batch.
-
-    Bypasses LayerNorm entirely, preserving per-patient variance that
-    LayerNorm erases in the GAT embedding path.
-
-    Args:
-        x: (B, F) standardized feature tensor for one modality.
-    Returns:
-        (B, 3) tensor.
-    """
-    mean = x.mean(dim=1, keepdim=True)
-    std  = x.std(dim=1, keepdim=True)
-    l2   = x.norm(dim=1, keepdim=True) / (x.shape[1] ** 0.5)
-    return torch.cat([mean, std, l2], dim=1)
+from src.models.sparse_attention import ModalityCrossAttention
 
 
 class GIACModel(nn.Module):
+    """HeteroGAT + Sparse Cross-Attention (no shortcut path)."""
 
     def __init__(self, dims: dict, cfg_model: dict, cfg_train: dict):
         super().__init__()
 
         hidden_dim   = cfg_model["hidden_dim"]
         num_classes  = cfg_model["num_classes"]
-        gate_dropout = cfg_model.get("gate_dropout", cfg_model["classifier_dropout"])
+        sparse_alpha = cfg_model.get("sparsemax_alpha", 1.5)
 
-        # Module 1: GAT Encoder
+        # ── 1. HeteroGAT Encoder ─────────────────────────────────────
         self.gat_module = MultiOmicGATModule(
             dims       = dims,
             hidden_dim = hidden_dim,
@@ -753,46 +745,28 @@ class GIACModel(nn.Module):
             dropout    = cfg_model["gat_dropout"],
         )
 
-        # Module 2a: Gate from GAT embeddings (with LayerNorm)
-        self.modality_gate = nn.Sequential(
+        # ── 2. Sparse Cross-Attention (inter-modality) ────────────────
+        # Mỗi modality attend to 2 modality còn lại (diagonal masked).
+        # Output: z'_gene, z'_meth, z'_mirna + attn_matrix (B,3,3)
+        self.cross_attention = ModalityCrossAttention(
+            hidden_dim   = hidden_dim,
+            n_heads      = cfg_model.get("ca_heads", 4),
+            dropout      = cfg_model.get("ca_dropout", 0.2),
+            sparse_alpha = sparse_alpha,
+        )
+
+        # ── 3. Patient Gate (sparse modality weights per patient) ─────
+        gate_dropout = cfg_model.get("gate_dropout", 0.3)
+        self.patient_gate_mlp = nn.Sequential(
             nn.LayerNorm(hidden_dim * 3),
             nn.Linear(hidden_dim * 3, hidden_dim),
             nn.GELU(),
             nn.Dropout(gate_dropout),
             nn.Linear(hidden_dim, 3),
         )
-        with torch.no_grad():
-            self.modality_gate[-1].bias[0] += 0.0   # gene
-            self.modality_gate[-1].bias[1] += 0.3   # meth (ablation prior)
-            self.modality_gate[-1].bias[2] += 0.1   # mirna
+        self.sparse_alpha = sparse_alpha
 
-        # Module 2b: Gate from raw modality stats (NEW - no LayerNorm)
-        # 9 = 3 modalities x 3 stats (mean, std, l2norm)
-        self.gate_raw_proj = nn.Sequential(
-            nn.Linear(9, 16),
-            nn.GELU(),
-            nn.Linear(16, 3),
-        )
-
-        # Module 3: Shortcut path (Phase 23 slim version)
-        # Cũ: raw_dim -> hidden*2 -> hidden (2.5M params, overfit nặng)
-        # Mới: raw_dim -> hidden (1.2M params) + input dropout chống overfit
-        raw_dim = dims["gene"] + dims["meth"] + dims["mirna"]
-        self.shortcut = nn.Sequential(
-            nn.Dropout(0.3),
-            nn.Linear(raw_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.GELU(),
-            nn.Dropout(gate_dropout),
-        )
-
-        # Phase 23: fusion_alpha FIXED = 0.5 (không còn learnable).
-        # Phase 24 (Ablation): Cho phép config fusion_alpha để check GAT vs Shortcut.
-        # Nếu không có trong config, mặc định 0.5.
-        fusion_alpha_val = cfg_model.get("fusion_alpha", 0.5)
-        self.register_buffer("fusion_alpha_fixed", torch.tensor(float(fusion_alpha_val)))
-
-        # Module 4: Classifier
+        # ── 4. Classifier ─────────────────────────────────────────────
         self.classifier = SubtypeClassifier(
             hidden_dim  = hidden_dim,
             final_dim   = cfg_model["final_dim"],
@@ -800,7 +774,7 @@ class GIACModel(nn.Module):
             dropout     = cfg_model["classifier_dropout"],
         )
 
-        # Loss config
+        # ── Loss ──────────────────────────────────────────────────────
         self.loss_name = cfg_train.get("loss_name", "focal").lower()
         self.register_buffer(
             "class_weights", torch.ones(num_classes, dtype=torch.float32)
@@ -811,73 +785,66 @@ class GIACModel(nn.Module):
             num_classes     = num_classes,
             label_smoothing = cfg_train.get("label_smoothing", 0.0),
         )
-        self.lambda2         = cfg_train["lambda_frobenius"]
-        self.lambda_entropy  = cfg_train.get("lambda_entropy", 0.0)
-        self.sparsemax_alpha = cfg_model.get("sparsemax_alpha", 1.5)
+        self.lambda2        = cfg_train["lambda_frobenius"]
+        self.lambda_entropy = cfg_train.get("lambda_entropy", 0.0)
 
     def set_class_weights(self, class_weights: torch.Tensor):
         normalized = class_weights / class_weights.mean().clamp_min(1e-8)
         self.class_weights.copy_(normalized.to(self.class_weights.device))
         self.focal_loss.set_alpha(self.class_weights)
 
-    def forward(self, batch: dict, graph: HeteroData, return_interpretability: bool = False):
-        # GAT path
-        z_gene, z_cpg, z_mirna = self.gat_module(batch, graph)
+    def forward(
+        self,
+        batch: dict,
+        graph: HeteroData,
+        return_interpretability: bool = False,
+    ):
+        # 1. HeteroGAT: graph-informed per-modality embeddings
+        z_gene, z_meth, z_mirna = self.gat_module(batch, graph)  # (B,H) each
 
-        # Gate path A: from GAT embeddings (subject to LayerNorm collapse)
-        gate_from_gat = self.modality_gate(
-            torch.cat([z_gene, z_cpg, z_mirna], dim=-1)
+        # 2. Sparse Cross-Attention: inter-modality information exchange
+        z_gene, z_meth, z_mirna, attn_matrix = self.cross_attention(
+            z_gene, z_meth, z_mirna
+        )  # (B,H) each + attn_matrix (B,3,3)
+
+        # 3. Patient Gate: sparse modality importance per patient
+        gate_logits  = self.patient_gate_mlp(
+            torch.cat([z_gene, z_meth, z_mirna], dim=-1)
         )  # (B, 3)
 
-        # Gate path B: from raw modality statistics (bypasses LayerNorm)
-        raw_stats = torch.cat([
-            _raw_modality_stats(batch["gene"]),
-            _raw_modality_stats(batch["meth"]),
-            _raw_modality_stats(batch["mirna"]),
-        ], dim=1)  # (B, 9)
-        gate_from_raw = self.gate_raw_proj(raw_stats)  # (B, 3)
-
-        # Combined gate logits - additive, both paths contribute
-        gate_logits = gate_from_gat + gate_from_raw  # (B, 3)
-
-        if self.sparsemax_alpha == 1.0:
+        if self.sparse_alpha == 1.0:
             patient_gate = F.softmax(gate_logits, dim=-1)
-        elif self.sparsemax_alpha == 1.5:
+        elif self.sparse_alpha == 1.5:
             patient_gate = entmax15(gate_logits, dim=-1)
         else:
             patient_gate = sparsemax(gate_logits, dim=-1)
 
-        stacked   = torch.stack([z_gene, z_cpg, z_mirna], dim=1)       # (B, 3, H)
-        fused_gat = (stacked * patient_gate.unsqueeze(-1)).sum(dim=1)   # (B, H)
-
-        # Shortcut path
-        x_raw          = torch.cat([batch["gene"], batch["meth"], batch["mirna"]], dim=-1)
-        fused_shortcut = self.shortcut(x_raw)
-
-        # Phase 23: convex interpolation với alpha FIXED = 0.5
-        # Không còn learnable alpha → loại bỏ 1 nguồn variance.
-        alpha = self.fusion_alpha_fixed
-        fused = alpha * fused_gat + (1.0 - alpha) * fused_shortcut
-
-        logits = self.classifier(fused)
+        # 4. Weighted sum → classifier
+        stacked = torch.stack([z_gene, z_meth, z_mirna], dim=1)    # (B, 3, H)
+        fused   = (stacked * patient_gate.unsqueeze(-1)).sum(dim=1) # (B, H)
+        logits  = self.classifier(fused)
 
         if return_interpretability:
             return logits, None, {
-                "patient":      patient_gate,
-                "fusion_alpha": alpha.item(),
+                "patient_gate": patient_gate,   # (B, 3)   modality dominance
+                "attn_matrix":  attn_matrix,    # (B, 3, 3) cross-modality attention
             }
 
         return logits, patient_gate
 
-    def compute_loss(self, logits: torch.Tensor, labels: torch.Tensor,
-                     patient_gate: torch.Tensor = None) -> torch.Tensor:
+    def compute_loss(
+        self,
+        logits:       torch.Tensor,
+        labels:       torch.Tensor,
+        patient_gate: torch.Tensor = None,
+    ) -> torch.Tensor:
         if self.loss_name == "cross_entropy":
             loss_cls = F.cross_entropy(logits, labels, weight=self.class_weights)
         else:
             loss_cls = self.focal_loss(logits, labels)
 
         loss_frob = frobenius_regularization_loss(
-            self.modality_gate, self.lambda2, param_prefix="weight"
+            self.patient_gate_mlp, self.lambda2, param_prefix="weight"
         )
 
         if patient_gate is not None and self.lambda_entropy > 0:

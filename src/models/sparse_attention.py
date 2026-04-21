@@ -213,6 +213,95 @@ class FeatureSparseScorer(nn.Module):
         return x * self.scale + self.bias
 
 
+class ModalityCrossAttention(nn.Module):
+    """
+    Sparse cross-attention giữa 3 omics modalities.
+
+    Mỗi modality được update dựa trên thông tin từ 2 modality còn lại.
+    Diagonal bị mask → chỉ cross-modality signal, không self-attend.
+
+    Input:  z_gene, z_meth, z_mirna  (B, H) mỗi cái
+    Output: z'_gene, z'_meth, z'_mirna (B, H) + attn_matrix (B, 3, 3)
+
+    Explainability: attn_matrix[b, i, j] = mức độ modality i attend to
+                    modality j cho patient b (i≠j, diagonal=0).
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int,
+        n_heads: int = 4,
+        dropout: float = 0.1,
+        sparse_alpha: float = 1.5,
+    ):
+        super().__init__()
+        assert hidden_dim % n_heads == 0, \
+            f"hidden_dim={hidden_dim} phải chia hết cho n_heads={n_heads}"
+
+        self.n_heads  = n_heads
+        self.head_dim = hidden_dim // n_heads
+        self.scale    = self.head_dim ** -0.5
+        self.alpha    = sparse_alpha
+
+        self.W_q      = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.W_k      = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.W_v      = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.out_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.dropout  = nn.Dropout(dropout)
+        self.norm     = nn.LayerNorm(hidden_dim)
+
+        # Diagonal mask: modality i không attend to chính nó
+        self.register_buffer("diag_mask", torch.eye(3, dtype=torch.bool))
+
+    def forward(
+        self,
+        z_gene:  torch.Tensor,   # (B, H)
+        z_meth:  torch.Tensor,   # (B, H)
+        z_mirna: torch.Tensor,   # (B, H)
+    ):
+        B, H = z_gene.shape
+        z = torch.stack([z_gene, z_meth, z_mirna], dim=1)  # (B, 3, H)
+
+        # Q, K, V: (B, 3, H) → (B, n_heads, 3, head_dim)
+        def proj(x, W):
+            return W(x).view(B, 3, self.n_heads, self.head_dim).transpose(1, 2)
+
+        Q = proj(z, self.W_q)
+        K = proj(z, self.W_k)
+        V = proj(z, self.W_v)
+
+        # Scores: (B, n_heads, 3, 3)
+        scores = torch.matmul(Q, K.transpose(-2, -1)) * self.scale
+
+        # Mask diagonal → -inf (không attend to self)
+        scores = scores.masked_fill(
+            self.diag_mask.unsqueeze(0).unsqueeze(0), float("-inf")
+        )
+
+        # Sparse attention
+        if self.alpha == 1.0:
+            attn = F.softmax(scores, dim=-1)
+        elif self.alpha == 1.5:
+            attn = entmax15(scores, dim=-1)
+        else:
+            attn = sparsemax(scores, dim=-1)
+
+        attn = self.dropout(attn)
+
+        # Attended values: (B, n_heads, 3, head_dim) → (B, 3, H)
+        out = torch.matmul(attn, V)
+        out = out.transpose(1, 2).contiguous().view(B, 3, H)
+        out = self.out_proj(out)
+
+        # Residual + LayerNorm
+        out = self.norm(z + out)
+
+        # Attention matrix trung bình qua heads: (B, 3, 3)
+        attn_matrix = attn.mean(dim=1)
+
+        return out[:, 0, :], out[:, 1, :], out[:, 2, :], attn_matrix
+
+
 def get_top_k_features(
     sparse_weights: dict,
     feature_names: dict,

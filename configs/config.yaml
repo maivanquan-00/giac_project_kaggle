@@ -1,6 +1,6 @@
 # ============================================================
 #  Toan bo hyperparameter cua project
-#  Phase 23 -- Wave 1: fix val/test gap + slim shortcut + fixed fusion
+#  Phase 25 -- HeteroGAT + Sparse Cross-Attention (rebuild)
 # ============================================================
 
 data:
@@ -15,7 +15,6 @@ preprocessing:
   feature_selection_method: "anova"
   val_size: 0.15
   cv_folds: 5
-  # Phase 23: giảm minority_boost_gene, tắt boost meth (3-4 positives không đủ tin cậy)
   minority_boost_gene: 200
   minority_boost_meth: 0
   minority_boost_mirna: 0
@@ -30,22 +29,17 @@ graph:
   use_mirna: true
 
 model:
-  hidden_dim: 128
+  hidden_dim: 64            # 128→64: giảm 4x params, fix overfitting GAT
   gat_heads: 4
   gat_layers: 1
-  gat_dropout: 0.4
-  cross_attn_heads: 8
-  sparsemax_alpha: 1.5
-  modality_temperature: 1.0
-  cross_attn_dropout: 0.5
+  gat_dropout: 0.6          # 0.4→0.6: stronger regularization on message passing
+  ca_heads: 4               # cross-attention heads
+  ca_dropout: 0.2           # cross-attention dropout
+  sparsemax_alpha: 1.5      # entmax15 cho cả cross-attention lẫn patient gate
   gate_dropout: 0.3
   num_classes: 5
   classifier_dropout: 0.5
-  final_dim: 64
-  # Phase 24 Ablation:
-  # fusion_alpha=1.0 -> Pure GAT (tắt Shortcut)
-  # fusion_alpha=0.0 -> Pure Shortcut (tắt GAT)
-  fusion_alpha: 0.0
+  final_dim: 32             # 64→32: classifier head nhỏ hơn
 
 training:
   epochs: 150
@@ -56,7 +50,7 @@ training:
   onecycle_pct_start: 0.1
   onecycle_div_factor: 10.0
   onecycle_final_div_factor: 100.0
-  weight_decay: 1.0e-3
+  weight_decay: 5.0e-3      # 1e-3→5e-3: stronger L2 regularization
   test_size: 0.2
   focal_gamma: 2.0
   focal_alpha: [1.0, 3.0, 1.5, 5.0, 3.0]
@@ -64,10 +58,7 @@ training:
   lambda_modality: 0.00
   lambda_frobenius: 0.01
   lambda_entropy: 0.00
-  # Phase 23: patience giảm 20 → 12 tránh lưu checkpoint overfit
-  patience: 12
-  # Phase 23: chọn best checkpoint theo val LOSS (lower=better) thay vì val F1
-  # F1 quá noisy với HM-SNV 1-2 samples/val. Loss continuous, ổn định hơn.
+  patience: 15
   model_selection_metric: "val_loss"
   seed: 42
   loss_name: "focal"
