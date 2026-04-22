@@ -257,33 +257,49 @@ def _fit_modality_preprocessor(
     if top_k is None or top_k <= 0 or top_k >= n_features:
         selected_idx = np.arange(n_features, dtype=np.int64)
     else:
+        # ── Pre-filter: remove constant features (std == 0) before ANOVA ────
+        # This avoids sklearn's UserWarning about constant features and the
+        # subsequent RuntimeWarning about division by zero in f_classif.
+        stds = train_slice.std(axis=0, dtype=np.float64)
+        non_constant_mask = stds > 1e-10          # True = variable feature
+        non_constant_idx  = np.where(non_constant_mask)[0]  # indices into original
+
+        # Work on the variable-feature subset for ANOVA
+        train_variable = train_slice[:, non_constant_idx]
+        n_variable = train_variable.shape[1]
+
+        # Adjust top_k to not exceed available variable features
+        effective_top_k = min(top_k, n_variable)
+
         # Primary ANOVA: all classes
-        if train_labels is not None:
-            f_scores, _ = f_classif(train_slice, train_labels)
-            # nan: constant features → score 0 (exclude). posinf: perfect discriminators → keep highest
-            f_scores = np.nan_to_num(f_scores, nan=0.0, posinf=1e10, neginf=0.0)
-            selected_idx = np.argpartition(f_scores, -top_k)[-top_k:]
+        if train_labels is not None and n_variable > 0:
+            f_scores = np.zeros(n_variable, dtype=np.float64)
+            f_raw, _ = f_classif(train_variable, train_labels)
+            # posinf → keep (perfect separators); nan → 0 (shouldn't occur after pre-filter)
+            f_scores = np.nan_to_num(f_raw, nan=0.0, posinf=1e10, neginf=0.0)
+            top_local = np.argpartition(f_scores, -effective_top_k)[-effective_top_k:]
         else:
             # Fallback to variance if no labels provided
-            variances = train_slice.var(axis=0, dtype=np.float64)
-            selected_idx = np.argpartition(variances, -top_k)[-top_k:]
-        selected_idx = np.sort(selected_idx).astype(np.int64)
+            variances = train_variable.var(axis=0, dtype=np.float64)
+            top_local = np.argpartition(variances, -effective_top_k)[-effective_top_k:]
 
-        # Minority-class stratified boost
+        # Map local (variable-subset) indices back to original feature indices
+        selected_idx = np.sort(non_constant_idx[top_local]).astype(np.int64)
+
+        # ── Minority-class stratified boost ──────────────────────────────────
         if (minority_boost > 0 and train_labels is not None
-                and minority_classes is not None):
+                and minority_classes is not None and n_variable > 0):
             extra_idx_list = []
             for cls in minority_classes:
-                mask = (train_labels == cls).astype(np.float32)
-                # Skip if too few positives for a meaningful test
-                if mask.sum() < 3:
+                n_pos = (train_labels == cls).sum()
+                if n_pos < 3:
                     continue
                 binary_labels = (train_labels == cls).astype(np.int64)
-                f_bin, _ = f_classif(train_slice, binary_labels)
-                f_bin = np.nan_to_num(f_bin, nan=0.0, posinf=1e10, neginf=0.0)
-                boost_k = min(minority_boost, n_features)
-                extra = np.argpartition(f_bin, -boost_k)[-boost_k:]
-                extra_idx_list.append(extra)
+                f_bin_raw, _ = f_classif(train_variable, binary_labels)
+                f_bin = np.nan_to_num(f_bin_raw, nan=0.0, posinf=1e10, neginf=0.0)
+                boost_k = min(minority_boost, n_variable)
+                extra_local = np.argpartition(f_bin, -boost_k)[-boost_k:]
+                extra_idx_list.append(non_constant_idx[extra_local])
             if extra_idx_list:
                 all_extra = np.concatenate(extra_idx_list)
                 selected_idx = np.sort(
