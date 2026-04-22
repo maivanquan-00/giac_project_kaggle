@@ -161,12 +161,28 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     model.set_class_weights(
         compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device)
     )
- 
+    
+    # ================= BẮT ĐẦU ĐOẠN THÊM MỚI =================
+    node_emb_params = []
+    base_params = []
+    
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        # Lọc các tham số liên quan đến embedding của HeteroGraph/GAT
+        if "emb" in name.lower() or "lin_src" in name.lower() or "lin_dst" in name.lower():
+            node_emb_params.append(param)
+        else:
+            base_params.append(param)
+
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        [
+            {"params": node_emb_params, "weight_decay": 1e-2}, # Weight decay cao hơn cho embeddings
+            {"params": base_params, "weight_decay": cfg["training"]["weight_decay"]} # Weight decay chung
+        ],
         lr=cfg["training"]["learning_rate"],
-        weight_decay=cfg["training"]["weight_decay"],
     )
+    # ================= KẾT THÚC ĐOẠN THÊM MỚI =================
  
     sched_name = cfg["training"].get("scheduler", "onecycle").lower()
     if sched_name == "onecycle":

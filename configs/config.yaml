@@ -34,7 +34,7 @@ graph:
   use_mirna_family: true
 
 model:
-  hidden_dim:   128
+  hidden_dim:   96
   gat_heads:    4
   gat_layers:   2
   gat_dropout:  0.3
@@ -64,6 +64,7 @@ training:
   patience: 15
   seed:     42
   loss_name: "focal"
+  model_selection_metric: "val_f1"
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"

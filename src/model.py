@@ -71,80 +71,143 @@ class ModalityCrossAttention(nn.Module):
     modality_temperature : temperature for modality weight softmax (interpretability)
     """
 
+    # def __init__(
+    #     self,
+    #     hidden_dim: int,
+    #     n_heads:    int,
+    #     dropout:    float,
+    #     modality_temperature: float = 1.0,
+    # ):
+    #     super().__init__()
+    #     assert hidden_dim % n_heads == 0
+    #     self.hidden_dim = hidden_dim
+    #     self.n_heads    = n_heads
+    #     self.head_dim   = hidden_dim // n_heads
+    #     self.scale      = self.head_dim ** -0.5
+    #     self.temperature = max(float(modality_temperature), 1e-3)
+
+    #     # Query projection: gene
+    #     self.W_q = nn.Linear(hidden_dim, hidden_dim, bias=False)
+
+    #     # Key/Value projections: one pair per regulatory modality
+    #     self.W_k_cpg   = nn.Linear(hidden_dim, hidden_dim, bias=False)
+    #     self.W_v_cpg   = nn.Linear(hidden_dim, hidden_dim, bias=False)
+    #     self.W_k_mirna = nn.Linear(hidden_dim, hidden_dim, bias=False)
+    #     self.W_v_mirna = nn.Linear(hidden_dim, hidden_dim, bias=False)
+
+    #     # Output projection  (2 modalities × H -> H)
+    #     self.W_out = nn.Linear(hidden_dim * 2, hidden_dim)
+
+    #     self.dropout = nn.Dropout(dropout)
+    #     self.norm    = nn.LayerNorm(hidden_dim)
+
+    #     # Learnable global modality importance weights (interpretability)
+    #     # logits[0] = cpg importance, logits[1] = mirna importance
+    #     self.modality_logits = nn.Parameter(torch.zeros(2))
+
+    # @property
+    # def modality_weights(self) -> torch.Tensor:
+    #     """Softmax-normalised global modality weights (2,)."""
+    #     return F.softmax(self.modality_logits / self.temperature, dim=0)
+
+    # def _attend(
+    #     self,
+    #     q: torch.Tensor,   # (B, H)  gene query
+    #     k: torch.Tensor,   # (B, H)  modality key
+    #     v: torch.Tensor,   # (B, H)  modality value
+    # ) -> tuple[torch.Tensor, torch.Tensor]:
+    #     """
+    #     Single-modality multi-head cross-attention.
+    #     q, k, v are each (B, H).
+    #     Returns:
+    #         context : (B, H)
+    #         attn_w  : (B, n_heads, 1, 1) — averaged attention weight for interpretability
+    #     """
+    #     B = q.shape[0]
+
+    #     # Project and reshape to (B, n_heads, 1, head_dim)
+    #     def proj_reshape(x, W):
+    #         return W(x).view(B, self.n_heads, 1, self.head_dim)
+
+    #     Q = proj_reshape(q, self.W_q)    # gene query
+    #     # k and v are (B, H) -> treat as single token: (B, n_heads, 1, head_dim)
+    #     # We reshape K/V as sequence of 1 token (each patient, each modality = 1 vec)
+    #     K = k.view(B, self.n_heads, 1, self.head_dim)
+    #     V = v.view(B, self.n_heads, 1, self.head_dim)
+
+    #     # Attention: (B, n_heads, 1, 1)
+    #     scores  = torch.matmul(Q, K.transpose(-2, -1)) * self.scale
+    #     attn_w  = F.softmax(scores, dim=-1)                # softmax over 1 key → always 1.0
+    #     attn_w  = self.dropout(attn_w)
+
+    #     # Context: (B, n_heads, 1, head_dim) -> (B, H)
+    #     context = torch.matmul(attn_w, V)
+    #     context = context.view(B, self.hidden_dim)
+
+    #     return context, attn_w
+
+    # def forward(
+    #     self,
+    #     z_gene:  torch.Tensor,   # (B, H)
+    #     z_cpg:   torch.Tensor,   # (B, H)
+    #     z_mirna: torch.Tensor,   # (B, H)
+    #     return_attn: bool = False,
+    # ):
+    #     """
+    #     Returns
+    #     -------
+    #     fused   : (B, H)
+    #     attn    : dict with keys "cpg_attn", "mirna_attn", "modality_weights"
+    #               (only when return_attn=True)
+    #     """
+    #     # ── Cross-attention: gene -> cpg ────────────────────────────────
+    #     ctx_cpg,   attn_cpg   = self._attend(
+    #         z_gene, self.W_k_cpg(z_cpg),   self.W_v_cpg(z_cpg)
+    #     )
+    #     # ── Cross-attention: gene -> mirna ──────────────────────────────
+    #     ctx_mirna, attn_mirna = self._attend(
+    #         z_gene, self.W_k_mirna(z_mirna), self.W_v_mirna(z_mirna)
+    #     )
+
+    #     # ── Modality-weighted combination ───────────────────────────────
+    #     w = self.modality_weights  # (2,)
+    #     # Weight each modality's context before concatenation
+    #     weighted = torch.cat([w[0] * ctx_cpg, w[1] * ctx_mirna], dim=-1)  # (B, 2H)
+
+    #     # ── Output projection + residual (gene as anchor) ───────────────
+    #     fused = self.W_out(weighted)              # (B, H)
+    #     fused = self.norm(fused + z_gene)         # residual: gene is the anchor
+
+    #     if return_attn:
+    #         return fused, {
+    #             "cpg_attn":        attn_cpg.mean(dim=1).squeeze(-1).squeeze(-1),   # (B,)
+    #             "mirna_attn":      attn_mirna.mean(dim=1).squeeze(-1).squeeze(-1), # (B,)
+    #             "modality_weights": w,   # (2,) — global
+    #         }
+    #     return fused
+
     def __init__(
         self,
         hidden_dim: int,
-        n_heads:    int,
-        dropout:    float,
-        modality_temperature: float = 1.0,
+        n_heads: int,
+        dropout: float,
+        modality_temperature: float = 1.0, # Giữ lại để tương thích signature cũ
     ):
         super().__init__()
-        assert hidden_dim % n_heads == 0
         self.hidden_dim = hidden_dim
-        self.n_heads    = n_heads
-        self.head_dim   = hidden_dim // n_heads
-        self.scale      = self.head_dim ** -0.5
-        self.temperature = max(float(modality_temperature), 1e-3)
-
-        # Query projection: gene
-        self.W_q = nn.Linear(hidden_dim, hidden_dim, bias=False)
-
-        # Key/Value projections: one pair per regulatory modality
-        self.W_k_cpg   = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.W_v_cpg   = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.W_k_mirna = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.W_v_mirna = nn.Linear(hidden_dim, hidden_dim, bias=False)
-
-        # Output projection  (2 modalities × H -> H)
-        self.W_out = nn.Linear(hidden_dim * 2, hidden_dim)
-
-        self.dropout = nn.Dropout(dropout)
-        self.norm    = nn.LayerNorm(hidden_dim)
-
-        # Learnable global modality importance weights (interpretability)
-        # logits[0] = cpg importance, logits[1] = mirna importance
-        self.modality_logits = nn.Parameter(torch.zeros(2))
-
-    @property
-    def modality_weights(self) -> torch.Tensor:
-        """Softmax-normalised global modality weights (2,)."""
-        return F.softmax(self.modality_logits / self.temperature, dim=0)
-
-    def _attend(
-        self,
-        q: torch.Tensor,   # (B, H)  gene query
-        k: torch.Tensor,   # (B, H)  modality key
-        v: torch.Tensor,   # (B, H)  modality value
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Single-modality multi-head cross-attention.
-        q, k, v are each (B, H).
-        Returns:
-            context : (B, H)
-            attn_w  : (B, n_heads, 1, 1) — averaged attention weight for interpretability
-        """
-        B = q.shape[0]
-
-        # Project and reshape to (B, n_heads, 1, head_dim)
-        def proj_reshape(x, W):
-            return W(x).view(B, self.n_heads, 1, self.head_dim)
-
-        Q = proj_reshape(q, self.W_q)    # gene query
-        # k and v are (B, H) -> treat as single token: (B, n_heads, 1, head_dim)
-        # We reshape K/V as sequence of 1 token (each patient, each modality = 1 vec)
-        K = k.view(B, self.n_heads, 1, self.head_dim)
-        V = v.view(B, self.n_heads, 1, self.head_dim)
-
-        # Attention: (B, n_heads, 1, 1)
-        scores  = torch.matmul(Q, K.transpose(-2, -1)) * self.scale
-        attn_w  = F.softmax(scores, dim=-1)                # softmax over 1 key → always 1.0
-        attn_w  = self.dropout(attn_w)
-
-        # Context: (B, n_heads, 1, head_dim) -> (B, H)
-        context = torch.matmul(attn_w, V)
-        context = context.view(B, self.hidden_dim)
-
-        return context, attn_w
+        
+        # Dùng MultiheadAttention chuẩn của PyTorch
+        self.self_attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim, 
+            num_heads=n_heads, 
+            dropout=dropout, 
+            batch_first=True
+        )
+        
+        self.norm = nn.LayerNorm(hidden_dim)
+        
+        # Project từ 3 tokens đã được attention về lại hidden_dim
+        self.W_out = nn.Linear(hidden_dim * 3, hidden_dim)
 
     def forward(
         self,
@@ -153,37 +216,35 @@ class ModalityCrossAttention(nn.Module):
         z_mirna: torch.Tensor,   # (B, H)
         return_attn: bool = False,
     ):
-        """
-        Returns
-        -------
-        fused   : (B, H)
-        attn    : dict with keys "cpg_attn", "mirna_attn", "modality_weights"
-                  (only when return_attn=True)
-        """
-        # ── Cross-attention: gene -> cpg ────────────────────────────────
-        ctx_cpg,   attn_cpg   = self._attend(
-            z_gene, self.W_k_cpg(z_cpg),   self.W_v_cpg(z_cpg)
-        )
-        # ── Cross-attention: gene -> mirna ──────────────────────────────
-        ctx_mirna, attn_mirna = self._attend(
-            z_gene, self.W_k_mirna(z_mirna), self.W_v_mirna(z_mirna)
-        )
+        B = z_gene.shape[0]
+        
+        # Stack thành sequence 3 tokens: (B, 3, H)
+        # Index: 0=gene, 1=cpg, 2=mirna
+        seq = torch.stack([z_gene, z_cpg, z_mirna], dim=1)
 
-        # ── Modality-weighted combination ───────────────────────────────
-        w = self.modality_weights  # (2,)
-        # Weight each modality's context before concatenation
-        weighted = torch.cat([w[0] * ctx_cpg, w[1] * ctx_mirna], dim=-1)  # (B, 2H)
+        # Chạy full self-attention
+        # attn_out: (B, 3, H), attn_weights: (B, 3, 3)
+        attn_out, attn_weights = self.self_attn(seq, seq, seq)
 
-        # ── Output projection + residual (gene as anchor) ───────────────
-        fused = self.W_out(weighted)              # (B, H)
-        fused = self.norm(fused + z_gene)         # residual: gene is the anchor
+        # Flatten 3 tokens thành 1 vector duy nhất rồi project về lại H
+        flat = attn_out.reshape(B, -1)      # (B, 3 * H)
+        fused = self.W_out(flat)            # (B, H)
+
+        # Residual connection: gene vẫn đóng vai trò là anchor
+        fused = self.norm(fused + z_gene)
 
         if return_attn:
+            # Lấy attention weights của gene (query 0) chú ý vào cpg (key 1) và mirna (key 2)
+            cpg_attn = attn_weights[:, 0, 1]
+            mirna_attn = attn_weights[:, 0, 2]
+            
+            # Tính weight trung bình toàn cục cho interpretability
             return fused, {
-                "cpg_attn":        attn_cpg.mean(dim=1).squeeze(-1).squeeze(-1),   # (B,)
-                "mirna_attn":      attn_mirna.mean(dim=1).squeeze(-1).squeeze(-1), # (B,)
-                "modality_weights": w,   # (2,) — global
+                "cpg_attn": cpg_attn,
+                "mirna_attn": mirna_attn,
+                "modality_weights": torch.tensor([cpg_attn.mean(), mirna_attn.mean()], device=z_gene.device)
             }
+            
         return fused
 
 
