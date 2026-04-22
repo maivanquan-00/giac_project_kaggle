@@ -6,7 +6,6 @@ Train GIAC with either a single split or stratified cross-validation.
  
 import argparse
 import os
- 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -74,34 +73,33 @@ def eval_epoch(model, loader, graph, device, return_predictions=False):
  
 @torch.no_grad()
 def collect_attn_stats(model, loader, graph, device):
-    """Collect 3-token attention statistics for interpretability."""
     model.eval()
-    g2c, g2m, mw = [], [], None
+    cpg_list, mirna_list, mw = [], [], None
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
         _, _, attn = model(batch, graph, return_interpretability=True)
-        g2c.append(attn["gene_over_cpg"].cpu())
-        g2m.append(attn["gene_over_mirna"].cpu())
+        # attn["cpg_attn"]: (B, K) — mean over K nodes gives per-patient attention mass
+        cpg_list.append(attn["cpg_attn"].mean(dim=1).cpu())
+        mirna_list.append(attn["mirna_attn"].mean(dim=1).cpu())
         mw = attn["modality_weights"].detach().cpu()
-    g2c = torch.cat(g2c); g2m = torch.cat(g2m)
-    w = mw.tolist() if mw is not None else [0.333, 0.333, 0.334]
+    cpg_t   = torch.cat(cpg_list)
+    mirna_t = torch.cat(mirna_list)
+    w = mw.tolist() if mw is not None else [0.5, 0.5]
     return {
-        "gene_over_cpg_mean":   g2c.mean().item(),
-        "gene_over_cpg_std":    g2c.std().item(),
-        "gene_over_mirna_mean": g2m.mean().item(),
-        "gene_over_mirna_std":  g2m.std().item(),
-        "modality_w_gene":  w[0],
-        "modality_w_cpg":   w[1],
-        "modality_w_mirna": w[2],
+        "cpg_attn_mean":   cpg_t.mean().item(),
+        "cpg_attn_std":    cpg_t.std().item(),
+        "mirna_attn_mean": mirna_t.mean().item(),
+        "mirna_attn_std":  mirna_t.std().item(),
+        "modality_w_cpg":  w[0],
+        "modality_w_mirna": w[1],
     }
  
  
 def make_loaders(datasets, batch_size):
-    tl = DataLoader(datasets["train"], batch_size=batch_size,
-                    shuffle=True, num_workers=2, pin_memory=True)
-    vl = DataLoader(datasets["val"],  batch_size=64, shuffle=False)
-    tl2 = DataLoader(datasets["test"], batch_size=64, shuffle=False)
-    return tl, vl, tl2
+    tl  = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
+    vl  = DataLoader(datasets["val"],   batch_size=64, shuffle=False)
+    tel = DataLoader(datasets["test"],  batch_size=64, shuffle=False)
+    return tl, vl, tel
  
  
 def compute_class_weights(dataset, num_classes, device):
@@ -113,31 +111,25 @@ def compute_class_weights(dataset, num_classes, device):
  
  
 def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_name):
-    train_loader, val_loader, test_loader = make_loaders(
-        datasets, cfg["training"]["batch_size"]
-    )
+    train_loader, val_loader, test_loader = make_loaders(datasets, cfg["training"]["batch_size"])
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
-    model.set_class_weights(
-        compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device)
-    )
+    model.set_class_weights(compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device))
  
-    # Separate param groups: higher WD for node embeddings to combat overfitting
-    node_emb_params = list(model.gat.node_emb.parameters())
-    node_emb_ids    = {id(p) for p in node_emb_params}
-    other_params    = [p for p in model.parameters() if id(p) not in node_emb_ids]
-    base_wd  = cfg["training"]["weight_decay"]
-    emb_wd   = cfg["training"].get("node_emb_weight_decay", base_wd * 5)
+    base_wd   = cfg["training"]["weight_decay"]
+    emb_wd    = cfg["training"].get("node_emb_weight_decay", base_wd * 5)
+    base_lr   = cfg["training"]["learning_rate"]
+    node_emb_ids = {id(p) for p in model.gat.node_emb.parameters()}
     optimizer = torch.optim.AdamW([
-        {"params": other_params,    "lr": cfg["training"]["learning_rate"],  "weight_decay": base_wd},
-        {"params": node_emb_params, "lr": cfg["training"]["learning_rate"],  "weight_decay": emb_wd},
+        {"params": [p for p in model.parameters() if id(p) not in node_emb_ids], "lr": base_lr, "weight_decay": base_wd},
+        {"params": list(model.gat.node_emb.parameters()), "lr": base_lr, "weight_decay": emb_wd},
     ])
  
     sched_name = cfg["training"].get("scheduler", "onecycle").lower()
+    max_lr = cfg["training"].get("max_learning_rate", base_lr * 5)
     if sched_name == "onecycle":
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=[cfg["training"].get("max_learning_rate", cfg["training"]["learning_rate"]*5)] * 2,
+            optimizer, max_lr=[max_lr, max_lr],
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=max(len(train_loader), 1),
             pct_start=cfg["training"].get("onecycle_pct_start", 0.1),
@@ -146,25 +138,24 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         )
         step_per_batch = True
     else:
-        scheduler    = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["training"]["epochs"])
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["training"]["epochs"])
         step_per_batch = False
  
     early_stop = EarlyStopping(patience=cfg["training"]["patience"])
-    n_params   = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"\n\U0001f9e0 {fold_name} params: {n_params:,}  (node_emb WD={emb_wd:.0e})")
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"\n\U0001f9e0 {fold_name} params: {n_params:,}")
     print(f"\U0001f680 Training {fold_name}...  scheduler={sched_name}")
  
-    selection   = cfg["training"].get("model_selection_metric", "val_f1")
-    best_loss   = float("inf")
-    best_f1     = 0.0
-    save_dir    = cfg["logging"]["save_dir"]
-    viz_dir     = os.path.join(save_dir, "visualizations", fold_name.lower().replace(" ", "_"))
+    selection = cfg["training"].get("model_selection_metric", "val_f1")
+    best_loss = float("inf")
+    best_f1   = 0.0
+    save_dir  = cfg["logging"]["save_dir"]
+    viz_dir   = os.path.join(save_dir, "visualizations", fold_name.lower().replace(" ", "_"))
     ensure_dir(viz_dir)
-    ckpt_name   = ("best_model.pt" if fold_name == "Single split"
-                   else f"best_model_{fold_name.lower().replace(' ', '_')}.pt")
-    ckpt_path   = os.path.join(save_dir, ckpt_name)
-    history     = {"train_loss": [], "train_f1": [], "val_f1": [], "val_loss": []}
-    log_every   = cfg["logging"].get("log_interval", 5)
+    ckpt_name = "best_model.pt" if fold_name == "Single split" else f"best_model_{fold_name.lower().replace(' ', '_')}.pt"
+    ckpt_path = os.path.join(save_dir, ckpt_name)
+    history   = {"train_loss": [], "train_f1": [], "val_f1": [], "val_loss": []}
+    log_every = cfg["logging"].get("log_interval", 5)
  
     plot_split_class_distribution(
         {k: datasets[k].label.cpu().numpy() for k in ["train", "val", "test"]},
@@ -190,18 +181,19 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             print_metrics(tr, "Train")
             print_metrics(vl, "Val  ")
             w = model.cross_attn.modality_weights.detach()
-            print(f"       modality_w: gene={w[0]:.3f} cpg={w[1]:.3f} mirna={w[2]:.3f}  |  val_loss={vl['loss']:.4f}")
+            print(f"       modality_w: cpg={w[0]:.3f} mirna={w[1]:.3f}  |  val_loss={vl['loss']:.4f}")
  
-        # Checkpoint selection
         improved = False
         if selection == "val_loss":
             if vl["loss"] < best_loss:
                 best_loss, improved = vl["loss"], True
-        else:  # val_f1
+        else:
             if vl["f1"] > best_f1:
                 improved = True
         if vl["f1"] > best_f1:
             best_f1 = vl["f1"]
+        if vl["loss"] < best_loss:
+            best_loss = vl["loss"]
  
         if improved:
             save_checkpoint(model, optimizer, epoch, vl, path=ckpt_path,
@@ -238,9 +230,8 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
  
     attn = collect_attn_stats(model, test_loader, graph, device)
     print(f"\n\U0001f50d Attention Stats - {fold_name}")
-    print(f"   gene->cpg  : mean={attn['gene_over_cpg_mean']:.4f}  std={attn['gene_over_cpg_std']:.4f}")
-    print(f"   gene->mirna: mean={attn['gene_over_mirna_mean']:.4f}  std={attn['gene_over_mirna_std']:.4f}")
-    print(f"   global_w   : gene={attn['modality_w_gene']:.3f}  cpg={attn['modality_w_cpg']:.3f}  mirna={attn['modality_w_mirna']:.3f}")
+    print(f"   cpg  : mean={attn['cpg_attn_mean']:.4f}  std={attn['cpg_attn_std']:.4f}  global_w={attn['modality_w_cpg']:.3f}")
+    print(f"   mirna: mean={attn['mirna_attn_mean']:.4f}  std={attn['mirna_attn_std']:.4f}  global_w={attn['modality_w_mirna']:.3f}")
  
     return {"fold": fold_name, "best_val_f1": best_f1, "test_metrics": test_m,
             "checkpoint": ckpt_path, "viz_dir": viz_dir}
@@ -261,7 +252,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\U0001f5a5\ufe0f  Device: {device}")
  
-    cv_folds = (args.cv_folds or cfg.get("preprocessing", {}).get("cv_folds", 5))
+    cv_folds = args.cv_folds or cfg.get("preprocessing", {}).get("cv_folds", 5)
     if cv_folds and cv_folds > 1:
         fold_packages = build_cv_datasets(cfg, cfg["training"]["seed"], n_splits=cv_folds)
         results = []
