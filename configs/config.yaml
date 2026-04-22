@@ -1,70 +1,72 @@
 # ============================================================
-#  Toan bo hyperparameter cua project
-#  Phase 25 -- HeteroGAT + Sparse Cross-Attention (rebuild)
+#  GIAC Multi-Omics — Pipeline: HeteroGraph + GAT + Cross-Attention
 # ============================================================
 
 data:
-  data_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
+  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
   cancer_types: ["COAD", "ESCA", "READ", "STAD"]
 
 preprocessing:
-  gene_top_k: 3500
-  meth_top_k: 3500
-  mirna_top_k: 1881
+  gene_top_k:   3500
+  meth_top_k:   3500
+  mirna_top_k:  1881
   feature_selection_method: "anova"
-  val_size: 0.15
-  cv_folds: 5
-  minority_boost_gene: 200
-  minority_boost_meth: 0
-  minority_boost_mirna: 0
-  minority_classes: [1, 3]   # GS=class1, HM-SNV=class3
+  val_size:  0.1
+  cv_folds:  5
+  # Minority-class boost: binary ANOVA for GS (class 1) and HM-SNV (class 3)
+  minority_boost_gene:   300
+  minority_boost_meth:   300
+  minority_boost_mirna:  0
+  minority_classes: [1, 3]
 
 graph:
-  emqtl_pval_threshold: 0.05
-  max_edges_per_node: 20
+  emqtl_pval_threshold:   0.05
+  max_edges_per_node:     20
   max_coregulation_edges: 10
-  ppi_score_threshold: 700
-  use_ppi: true
-  use_mirna: true
+  ppi_score_threshold:    700
+  # Reactome co-pathway edges
+  reactome_max_pathway_size: 50   # skip very large pathways to avoid dense cliques
+  # Feature flags
+  use_ppi:          true
+  use_reactome:     true
+  use_mirna:        true
+  use_mirna_family: true
 
 model:
-  hidden_dim: 64            # 128→64: giảm 4x params, fix overfitting GAT
-  gat_heads: 4
-  gat_layers: 1
-  gat_dropout: 0.5          # 0.4→0.6: stronger regularization on message passing
-  ca_heads: 4               # cross-attention heads
-  ca_dropout: 0.2           # cross-attention dropout
-  sparsemax_alpha: 1.5      # entmax15 cho cả cross-attention lẫn patient gate
-  gate_dropout: 0.3
+  hidden_dim:   128
+  gat_heads:    4
+  gat_layers:   2
+  gat_dropout:  0.3
+  # Cross-Attention (asymmetric: gene queries, cpg/mirna as keys)
+  cross_attn_heads:    4
+  cross_attn_dropout:  0.3
+  modality_temperature: 1.0
+  classifier_dropout:  0.5
   num_classes: 5
-  classifier_dropout: 0.5
-  final_dim: 32             # 64→32: classifier head nhỏ hơn
+  final_dim:   64
 
 training:
-  epochs: 150
-  batch_size: 32
-  learning_rate: 1.0e-4
+  epochs:      150
+  batch_size:  32
+  learning_rate:     1.0e-4
   max_learning_rate: 5.0e-4
   scheduler: "onecycle"
-  onecycle_pct_start: 0.1
-  onecycle_div_factor: 10.0
+  onecycle_pct_start:        0.1
+  onecycle_div_factor:       10.0
   onecycle_final_div_factor: 100.0
-  weight_decay: 5.0e-3      # 1e-3→5e-3: stronger L2 regularization
-  test_size: 0.2
-  focal_gamma: 2.0
-  focal_alpha: [1.0, 3.0, 1.5, 5.0, 2.0]
+  weight_decay:    1.0e-3
+  test_size:       0.2
+  focal_gamma:     2.0
+  focal_alpha:     [1.0, 2.0, 1.5, 4.0, 3.0]
   label_smoothing: 0.05
-  lambda_modality: 0.00
   lambda_frobenius: 0.01
-  lambda_entropy: 0.00
   patience: 15
-  model_selection_metric: "val_loss"
-  seed: 42
+  seed:     42
   loss_name: "focal"
 
 logging:
-  save_dir: "/kaggle/working/checkpoints/"
+  save_dir:     "/kaggle/working/checkpoints/"
   log_interval: 5
 
 interpretability:
