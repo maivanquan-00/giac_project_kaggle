@@ -32,7 +32,7 @@ model:
   hidden_dim: 64            # 128→64: giảm 4x params, fix overfitting GAT
   gat_heads: 4
   gat_layers: 1
-  gat_dropout: 0.6          # 0.4→0.6: stronger regularization on message passing
+  gat_dropout: 0.5          # 0.4→0.6: stronger regularization on message passing
   ca_heads: 4               # cross-attention heads
   ca_dropout: 0.2           # cross-attention dropout
   sparsemax_alpha: 1.5      # entmax15 cho cả cross-attention lẫn patient gate
@@ -53,7 +53,7 @@ training:
   weight_decay: 5.0e-3      # 1e-3→5e-3: stronger L2 regularization
   test_size: 0.2
   focal_gamma: 2.0
-  focal_alpha: [1.0, 3.0, 1.5, 5.0, 3.0]
+  focal_alpha: [1.0, 3.0, 1.5, 5.0, 2.0]
   label_smoothing: 0.05
   lambda_modality: 0.00
   lambda_frobenius: 0.01
