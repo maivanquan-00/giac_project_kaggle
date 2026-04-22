@@ -249,9 +249,8 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             print(f"{fold_name} | Epoch {epoch:3d}/{cfg['training']['epochs']}")
             print_metrics(tr, "Train")
             print_metrics(vl, "Val  ")
-            # Log current cross-attention modality weights
-            w = model.cross_attn.modality_weights.detach()
-            print(f"       modality_w: cpg={w[0]:.3f}  mirna={w[1]:.3f}  |  val_loss={vl['loss']:.4f}")
+            # Đã bỏ log global modality weights vì module attention mới tính toán động theo từng sample
+            print(f"       val_loss={vl['loss']:.4f}")
  
         # Checkpoint selection
         improved = False

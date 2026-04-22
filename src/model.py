@@ -242,10 +242,9 @@ class ModalityCrossAttention(nn.Module):
             return fused, {
                 "cpg_attn": cpg_attn,
                 "mirna_attn": mirna_attn,
-                "modality_weights": torch.tensor([cpg_attn.mean(), mirna_attn.mean()], device=z_gene.device)
+                # Fix Warning: Dùng torch.stack và .detach() để an toàn ngắt gradient
+                "modality_weights": torch.stack([cpg_attn.mean(), mirna_attn.mean()]).detach()
             }
-            
-        return fused
 
 
 # ─────────────────────────────────────────────────────────────────────────────
