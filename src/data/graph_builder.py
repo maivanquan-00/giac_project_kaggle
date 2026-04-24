@@ -502,14 +502,6 @@ def _load_reactome_edges(reactome_file, hgnc_file, gene_idx, max_pathway_size=50
 # ─────────────────────────────────────────────
  
 def _load_mirna_family_edges(family_file, mirna_idx):
-    """
-    mirna_idx keys are ALREADY lowercase (e.g. 'hsa-mir-21-1').
-    TargetScan uses mixed-case mature names (e.g. 'hsa-miR-21-5p').
-    Strategy:
-      1. lowercase + strip -5p/-3p  → 'hsa-mir-21'
-      2. strip trailing digit (-1,-2) from TCGA names → 'hsa-mir-21'
-      3. Match on this normalised base name.
-    """
     if not os.path.exists(family_file):
         print("   ⚠️  miR_Family_Info.txt không tìm thấy")
         return None
@@ -534,28 +526,53 @@ def _load_mirna_family_edges(family_file, mirna_idx):
     if species_col:
         df = df[df[species_col].astype(str).str.contains("9606|sapiens", na=False)]
  
-    # Build normalised base → list of mirna_idx indices
-    # TCGA: 'hsa-mir-21-1' → base 'hsa-mir-21'
+    def normalize_mature(name: str) -> str:
+        """
+        'hsa-miR-21-5p' → 'hsa-mir-21'
+        'hsa-miR-21-3p' → 'hsa-mir-21'
+        Only strips -5p / -3p suffix, nothing else.
+        """
+        name = name.strip().lower()
+        return re.sub(r'-[35]p$', '', name)
+ 
+    def normalize_tcga(name: str) -> str:
+        """
+        'hsa-mir-21-1' → 'hsa-mir-21'   (precursor isoform -1, -2)
+        'hsa-mir-100'  → 'hsa-mir-100'  (number is part of name, keep it)
+        Rule: only strip trailing -N if N is a single digit AND
+              preceded by a letter (i.e. it's a precursor suffix like -1, -2).
+        """
+        name = name.strip().lower()
+        # Match pattern: ends with -[letter(s)]-[single digit]
+        # e.g. hsa-mir-21-1 → group = 'hsa-mir-21'
+        m = re.match(r'^(hsa-(?:mir|let)-\S+?)-([123])$', name)
+        if m:
+            return m.group(1)
+        return name
+ 
+    # Build TCGA-normalised base → list of indices
     tcga_base_to_idx = {}
-    for name, idx in mirna_idx.items():
-        base = re.sub(r'-\d+$', '', name.lower().strip())   # strip -1/-2
+    for tcga_name, idx in mirna_idx.items():
+        base = normalize_tcga(tcga_name)
         tcga_base_to_idx.setdefault(base, []).append(idx)
  
+    # Build family → list of mirna indices
     family_to_indices = {}
     for _, row in df[[family_col, mirna_col]].iterrows():
         fam  = str(row[family_col]).strip()
-        name = str(row[mirna_col]).strip().lower()           # 'hsa-mir-21-5p'
-        base = re.sub(r'-[35]p$', '', name)                  # strip -5p/-3p → 'hsa-mir-21'
-        base = re.sub(r'-\d+$',   '', base)                  # strip -1/-2 if any
+        base = normalize_mature(str(row[mirna_col]))
         for idx in tcga_base_to_idx.get(base, []):
             family_to_indices.setdefault(fam, []).append(idx)
+ 
+    # Cap: skip families with > 20 members (likely normalization artifact)
+    MAX_FAMILY_SIZE = 20
  
     src_list, dst_list = [], []
     seen = set()
  
     for fam, indices in family_to_indices.items():
         unique = list(set(indices))
-        if len(unique) < 2:
+        if len(unique) < 2 or len(unique) > MAX_FAMILY_SIZE:
             continue
         for a in range(len(unique)):
             for b in range(a + 1, len(unique)):
