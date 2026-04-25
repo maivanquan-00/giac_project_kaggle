@@ -32,11 +32,24 @@ def parse_args():
     return parser.parse_args()
  
  
+def _augment_minority(batch, minority_class: int = 3, noise_std: float = 0.10):
+    """Add Gaussian noise to HM-SNV samples each training step.
+    Forces the model to generalize instead of memorising the ~15 unique
+    HM-SNV training patients; features are already z-scored so std=0.10
+    is a mild perturbation (~10 % of one standard deviation)."""
+    mask = batch["label"] == minority_class
+    if mask.any():
+        for key in ("gene", "meth", "mirna"):
+            batch[key][mask] = batch[key][mask] + torch.randn_like(batch[key][mask]) * noise_std
+    return batch
+
+
 def train_epoch(model, loader, optimizer, graph, device, scheduler=None):
     model.train()
     total_loss, all_preds, all_labels = 0.0, [], []
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
+        batch = _augment_minority(batch)
         optimizer.zero_grad()
         logits, attn_info = model(batch, graph)
         loss = model.compute_loss(logits, batch["label"], attn_info)
