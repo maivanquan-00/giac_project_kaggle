@@ -53,9 +53,9 @@ training:
   focal_gamma:     2.0
   focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
   label_smoothing: 0.05
-  lambda_frobenius: 0.001
+  lambda_frobenius: 0.01
   patience: 20
-  model_selection_metric: "val_loss"
+  model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
 
