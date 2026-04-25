@@ -85,13 +85,10 @@ class MultiOmicGATModule(nn.Module):
                 for t, h in x_dict.items()
             }
 
-        # ── Gene: top-K summary vector (B, H) used as Query ──────────
-        # Select top-2K most active genes per patient instead of averaging all
-        # ~3500 genes (which dilutes the signal with housekeeping genes).
-        # Mean-pool the modulated embeddings to get a focused (B, H) query.
+        # ── Gene: single summary vector (B, H) used as Query ──────────
         z_gene = self.gene_norm(
-            self._topk_seq(batch["gene"], x_dict["gene"],
-                           self.topk_seq * 2).mean(dim=1)
+            torch.matmul(batch["gene"], x_dict["gene"])
+            / math.sqrt(batch["gene"].shape[1])
         )
 
         # ── CpG: top-K sequence (B, K, H) used as Key/Value ───────────
