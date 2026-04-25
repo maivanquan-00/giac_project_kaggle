@@ -62,6 +62,15 @@ class MultiOmicGATModule(nn.Module):
         ])
         self.dropout = nn.Dropout(dropout)
 
+        # Rank-based positional encodings for top-K CpG and miRNA sequences.
+        # Each of the K slots (rank-0 = most active … rank K-1 = least active)
+        # receives a unique learned offset so that cross-attention can distinguish
+        # tokens even when their GAT embeddings are nearly identical.
+        self.cpg_pos_emb   = nn.Embedding(topk_seq, hidden_dim)
+        self.mirna_pos_emb = nn.Embedding(topk_seq, hidden_dim)
+        nn.init.normal_(self.cpg_pos_emb.weight,   std=0.02)
+        nn.init.normal_(self.mirna_pos_emb.weight, std=0.02)
+
         # Summary vector norm for gene query only
         self.gene_norm = nn.LayerNorm(hidden_dim)
 
@@ -85,12 +94,13 @@ class MultiOmicGATModule(nn.Module):
         # ── CpG: top-K sequence (B, K, H) used as Key/Value ───────────
         # Select top-K CpG nodes per patient by their feature value (abs)
         # → captures the most active methylation sites per patient
-        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq)
-        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq)
+        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq, self.cpg_pos_emb)
+        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq, self.mirna_pos_emb)
 
         return z_gene, z_cpg_seq, z_mirna_seq
 
-    def _topk_seq(self, X: torch.Tensor, E: torch.Tensor, K: int) -> torch.Tensor:
+    def _topk_seq(self, X: torch.Tensor, E: torch.Tensor, K: int,
+                  pos_emb: nn.Embedding) -> torch.Tensor:
         B, n_feat = X.shape
         K = min(K, n_feat)
 
@@ -98,8 +108,13 @@ class MultiOmicGATModule(nn.Module):
         E_topk   = E[topk_idx]                          # (B, K, H)
 
         # Modulate each node embedding by patient's feature value (signed, standardised)
-        # Creates variance between tokens and between patients without destroying embedding
         weights = X.gather(1, topk_idx).unsqueeze(-1)   # (B, K, 1)
-        z_seq   = E_topk + E_topk * weights             # (B, K, H)  residual modulation
+        z_seq   = E_topk + E_topk * weights             # (B, K, H)
+
+        # Add rank-based positional encoding: rank-0 = most active feature.
+        # Gives each slot a unique learned signature so cross-attention can
+        # produce non-uniform weights even when base embeddings are similar.
+        rank_ids = torch.arange(K, device=X.device).unsqueeze(0).expand(B, -1)  # (B, K)
+        z_seq    = z_seq + pos_emb(rank_ids)             # (B, K, H)
 
         return z_seq

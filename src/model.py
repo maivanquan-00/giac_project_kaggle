@@ -43,6 +43,12 @@ class ModalityCrossAttention(nn.Module):
         # Global modality importance (2: cpg, mirna)
         self.modality_logits = nn.Parameter(torch.zeros(2))
 
+        # Learnable log-temperature for attention sharpening.
+        # Initialized to log(2) ≈ 0.693 → effective temp ≈ 2.0 at start,
+        # so scores are amplified from the first epoch and entmax15 can
+        # produce genuinely sparse weights rather than near-uniform ones.
+        self.log_temp = nn.Parameter(torch.tensor(0.693))
+
     @property
     def modality_weights(self):
         return F.softmax(self.modality_logits, dim=0)
@@ -63,7 +69,9 @@ class ModalityCrossAttention(nn.Module):
         V_ = W_v(kv_seq).view(B, K, self.n_heads, self.head_dim).transpose(1, 2)
 
         # Attention scores (B, n_heads, 1, K) → sparse weights over K nodes
-        scores = torch.matmul(Q, K_.transpose(-2, -1)) * self.scale
+        # Multiply by exp(log_temp) to sharpen/flatten the distribution;
+        # initialized to ~2.0 so entmax15 receives amplified score differences.
+        scores = torch.matmul(Q, K_.transpose(-2, -1)) * self.scale * self.log_temp.exp()
         if self.alpha == 1.0:
             attn = F.softmax(scores, dim=-1)
         else:
