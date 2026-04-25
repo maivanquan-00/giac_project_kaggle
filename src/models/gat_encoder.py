@@ -62,12 +62,8 @@ class MultiOmicGATModule(nn.Module):
         ])
         self.dropout = nn.Dropout(dropout)
 
-        # For the single summary vector (used as gene query)
-        self.output_norm = nn.ModuleDict({
-            "gene":  nn.LayerNorm(hidden_dim),
-            "cpg":   nn.LayerNorm(hidden_dim),
-            "mirna": nn.LayerNorm(hidden_dim),
-        })
+        # Summary vector norm for gene query only
+        self.gene_norm = nn.LayerNorm(hidden_dim)
 
     def forward(self, batch: dict, graph: HeteroData):
         x_dict = {k: self.node_emb[k] for k in ["gene", "cpg", "mirna"]}
@@ -81,7 +77,7 @@ class MultiOmicGATModule(nn.Module):
             }
 
         # ── Gene: single summary vector (B, H) used as Query ──────────
-        z_gene = self.output_norm["gene"](
+        z_gene = self.gene_norm(
             torch.matmul(batch["gene"], x_dict["gene"])
             / math.sqrt(batch["gene"].shape[1])
         )
@@ -96,25 +92,22 @@ class MultiOmicGATModule(nn.Module):
 
     def _topk_seq(self, X: torch.Tensor, E: torch.Tensor,
                   K: int, modality: str) -> torch.Tensor:
-        """
-        X : (B, F)   patient feature values (standardised)
-        E : (F, H)   node embeddings after GAT
-        Returns (B, K, H) — top-K node embeddings weighted by patient values
-        """
         B, F = X.shape
         K = min(K, F)
 
-        # Use absolute value to capture both hyper- and hypo-methylation
-        scores = X.abs()                              # (B, F)
-        topk_idx = scores.topk(K, dim=1).indices      # (B, K)
+        # Select top-K nodes by absolute feature value per patient
+        topk_idx = X.abs().topk(K, dim=1).indices          # (B, K)
 
-        # Gather embeddings for selected nodes
-        E_topk = E[topk_idx]                          # (B, K, H)
+        # Gather node embeddings for selected nodes
+        E_topk = E[topk_idx]                               # (B, K, H)
 
-        # Weight each embedding by the patient's actual feature value
-        weights = X.gather(1, topk_idx).unsqueeze(-1) # (B, K, 1)
-        z_seq = self.output_norm[modality](
-            (E_topk * weights).view(B * K, -1)
-        ).view(B, K, -1)                              # (B, K, H)
+        # Weight embeddings by patient's actual feature value (signed)
+        # This preserves inter-patient variance — critical for attention
+        weights = X.gather(1, topk_idx).unsqueeze(-1)      # (B, K, 1)
+        z_seq = E_topk * weights                           # (B, K, H)
+
+        # L2-normalize each token vector (preserve direction, not magnitude)
+        # Avoids exploding values without collapsing inter-token variance
+        z_seq = F.normalize(z_seq, p=2, dim=-1)            # (B, K, H)
 
         return z_seq
