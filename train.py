@@ -8,7 +8,7 @@ import argparse
 import os
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 import yaml
  
 from src.data.dataset import build_cv_datasets, build_datasets
@@ -106,8 +106,25 @@ def collect_attn_stats(model, loader, graph, device):
     }
  
  
-def make_loaders(datasets, batch_size):
-    tl  = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
+def make_loaders(datasets, batch_size, balanced_sampler: bool = False):
+    if balanced_sampler:
+        # Class-balanced sampling: each class contributes ~equal mass per epoch.
+        # Counters severe imbalance (HM-SNV=19 vs CIN=624) so minority classes
+        # actually get gradient updates instead of being drowned out.
+        labels = datasets["train"].label.cpu().numpy()
+        class_counts = np.bincount(labels).astype(np.float32)
+        class_weights = 1.0 / np.maximum(class_counts, 1.0)
+        sample_weights = class_weights[labels]
+        sampler = WeightedRandomSampler(
+            weights=torch.from_numpy(sample_weights).double(),
+            num_samples=len(labels),
+            replacement=True,
+        )
+        tl = DataLoader(datasets["train"], batch_size=batch_size, sampler=sampler,
+                        num_workers=2, pin_memory=True)
+    else:
+        tl = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True,
+                        num_workers=2, pin_memory=True)
     vl  = DataLoader(datasets["val"],   batch_size=64, shuffle=False)
     tel = DataLoader(datasets["test"],  batch_size=64, shuffle=False)
     return tl, vl, tel
@@ -122,7 +139,10 @@ def compute_class_weights(dataset, num_classes, device):
  
  
 def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_name):
-    train_loader, val_loader, test_loader = make_loaders(datasets, cfg["training"]["batch_size"])
+    balanced = cfg["training"].get("balanced_sampler", False)
+    train_loader, val_loader, test_loader = make_loaders(
+        datasets, cfg["training"]["batch_size"], balanced_sampler=balanced
+    )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
     model.set_class_weights(compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device))

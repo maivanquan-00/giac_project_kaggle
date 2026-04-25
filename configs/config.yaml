@@ -51,8 +51,9 @@ training:
   weight_decay:          3.0e-3
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
-  focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
+  focal_alpha:     [1.0, 1.0, 1.0, 1.5, 1.0]
   label_smoothing: 0.05
+  balanced_sampler: true
   lambda_frobenius: 0.01
   patience: 20
   model_selection_metric: "val_f1"
