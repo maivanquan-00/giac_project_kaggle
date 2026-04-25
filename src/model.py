@@ -68,10 +68,12 @@ class ModalityCrossAttention(nn.Module):
             attn = F.softmax(scores, dim=-1)
         else:
             attn = entmax15(scores, dim=-1)
-        attn = self.dropout(attn)                         # (B, n_heads, 1, K)
-
-        # Weighted sum → (B, H)
+        # NOTE: dropout applied to context output, not to attention weights.
+        # Dropping attention weights after entmax15 destroys sparsity patterns and
+        # creates train/eval mismatch (model sees zeroed weights in train but full
+        # sparse distribution at eval time).
         ctx = torch.matmul(attn, V_)                      # (B, n_heads, 1, head_dim)
+        ctx = self.dropout(ctx)                           # regularize context, not weights
         ctx = ctx.squeeze(2).transpose(1, 2).contiguous().view(B, self.H)
 
         # Average attention over heads for interpretability: (B, K)

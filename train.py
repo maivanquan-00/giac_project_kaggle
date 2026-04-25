@@ -74,23 +74,34 @@ def eval_epoch(model, loader, graph, device, return_predictions=False):
 @torch.no_grad()
 def collect_attn_stats(model, loader, graph, device):
     model.eval()
-    cpg_list, mirna_list, mw = [], [], None
+    cpg_std, cpg_max, cpg_nnz = [], [], []
+    mirna_std, mirna_max, mirna_nnz = [], [], []
+    mw = None
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
         _, _, attn = model(batch, graph, return_interpretability=True)
-        # attn["cpg_attn"]: (B, K) — mean over K nodes gives per-patient attention mass
-        cpg_list.append(attn["cpg_attn"].mean(dim=1).cpu())
-        mirna_list.append(attn["mirna_attn"].mean(dim=1).cpu())
+        # attn["cpg_attn"]: (B, K) — attention weights over K tokens per patient
+        # std over K tokens measures concentration; max measures peak; nnz measures sparsity
+        cw = attn["cpg_attn"]   # (B, K)
+        mw_a = attn["mirna_attn"]  # (B, K)
+        cpg_std.append(cw.std(dim=1).cpu())
+        cpg_max.append(cw.max(dim=1).values.cpu())
+        cpg_nnz.append((cw > 1e-6).float().mean(dim=1).cpu())
+        mirna_std.append(mw_a.std(dim=1).cpu())
+        mirna_max.append(mw_a.max(dim=1).values.cpu())
+        mirna_nnz.append((mw_a > 1e-6).float().mean(dim=1).cpu())
         mw = attn["modality_weights"].detach().cpu()
-    cpg_t   = torch.cat(cpg_list)
-    mirna_t = torch.cat(mirna_list)
+
+    def _m(lst): return torch.cat(lst).mean().item()
     w = mw.tolist() if mw is not None else [0.5, 0.5]
     return {
-        "cpg_attn_mean":   cpg_t.mean().item(),
-        "cpg_attn_std":    cpg_t.std().item(),
-        "mirna_attn_mean": mirna_t.mean().item(),
-        "mirna_attn_std":  mirna_t.std().item(),
-        "modality_w_cpg":  w[0],
+        "cpg_std":    _m(cpg_std),    # std over K tokens — >0 means non-uniform attention
+        "cpg_max":    _m(cpg_max),    # avg peak weight — >1/K means selective attention
+        "cpg_nnz":    _m(cpg_nnz),    # fraction non-zero tokens (entmax15 sparsity)
+        "mirna_std":  _m(mirna_std),
+        "mirna_max":  _m(mirna_max),
+        "mirna_nnz":  _m(mirna_nnz),
+        "modality_w_cpg":   w[0],
         "modality_w_mirna": w[1],
     }
  
@@ -230,8 +241,8 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
  
     attn = collect_attn_stats(model, test_loader, graph, device)
     print(f"\n\U0001f50d Attention Stats - {fold_name}")
-    print(f"   cpg  : mean={attn['cpg_attn_mean']:.4f}  std={attn['cpg_attn_std']:.4f}  global_w={attn['modality_w_cpg']:.3f}")
-    print(f"   mirna: mean={attn['mirna_attn_mean']:.4f}  std={attn['mirna_attn_std']:.4f}  global_w={attn['modality_w_mirna']:.3f}")
+    print(f"   cpg  : std={attn['cpg_std']:.4f}  max={attn['cpg_max']:.4f}  nnz={attn['cpg_nnz']:.3f}  global_w={attn['modality_w_cpg']:.3f}")
+    print(f"   mirna: std={attn['mirna_std']:.4f}  max={attn['mirna_max']:.4f}  nnz={attn['mirna_nnz']:.3f}  global_w={attn['modality_w_mirna']:.3f}")
  
     return {"fold": fold_name, "best_val_f1": best_f1, "test_metrics": test_m,
             "checkpoint": ckpt_path, "viz_dir": viz_dir}
