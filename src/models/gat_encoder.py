@@ -24,7 +24,7 @@ def _make_hetero_conv(hidden_dim: int, n_heads: int, dropout: float) -> HeteroCo
         ("gene",  "targeted_by",  "mirna"): bip(),
         ("cpg",   "coregulates",  "mirna"): bip(),
         ("mirna", "coregulates",  "cpg"):   bip(),
-        ("gene",  "interacts",    "gene"):  hom(),
+        ("gene",  "ppi",          "gene"):  hom(),
         ("gene",  "copathway",    "gene"):  hom(),
         ("mirna", "samefamily",   "mirna"): hom(),
         ("gene",  "self_loop",    "gene"):  hom(),

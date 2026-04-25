@@ -8,7 +8,7 @@ import argparse
 import os
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 import yaml
  
 from src.data.dataset import build_cv_datasets, build_datasets
@@ -95,33 +95,8 @@ def collect_attn_stats(model, loader, graph, device):
     }
  
  
-def make_loaders(datasets, batch_size, use_balanced_sampler=False):
-    train_ds = datasets["train"]
-    if use_balanced_sampler:
-        labels = train_ds.label.cpu().numpy()
-        counts = np.bincount(labels, minlength=int(labels.max()) + 1).astype(np.float32)
-        counts = np.clip(counts, 1.0, None)
-        sample_weights = 1.0 / counts[labels]
-        sampler = WeightedRandomSampler(
-            weights=torch.as_tensor(sample_weights, dtype=torch.double),
-            num_samples=len(sample_weights),
-            replacement=True,
-        )
-        tl = DataLoader(
-            train_ds,
-            batch_size=batch_size,
-            sampler=sampler,
-            num_workers=2,
-            pin_memory=True,
-        )
-    else:
-        tl = DataLoader(
-            train_ds,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=2,
-            pin_memory=True,
-        )
+def make_loaders(datasets, batch_size):
+    tl  = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
     vl  = DataLoader(datasets["val"],   batch_size=64, shuffle=False)
     tel = DataLoader(datasets["test"],  batch_size=64, shuffle=False)
     return tl, vl, tel
@@ -136,11 +111,7 @@ def compute_class_weights(dataset, num_classes, device):
  
  
 def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_name):
-    train_loader, val_loader, test_loader = make_loaders(
-        datasets,
-        cfg["training"]["batch_size"],
-        use_balanced_sampler=cfg["training"].get("use_balanced_sampler", False),
-    )
+    train_loader, val_loader, test_loader = make_loaders(datasets, cfg["training"]["batch_size"])
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
     model.set_class_weights(compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device))
