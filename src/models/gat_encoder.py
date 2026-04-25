@@ -108,6 +108,6 @@ class MultiOmicGATModule(nn.Module):
 
         # L2-normalize each token vector (preserve direction, not magnitude)
         # Avoids exploding values without collapsing inter-token variance
-        z_seq = F.normalize(z_seq, p=2, dim=-1)            # (B, K, H)
+        z_seq = torch.nn.functional.normalize(z_seq, p=2, dim=-1)
 
         return z_seq
