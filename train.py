@@ -139,7 +139,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     train_loader, val_loader, test_loader = make_loaders(
         datasets,
         cfg["training"]["batch_size"],
-        use_balanced_sampler=cfg["training"].get("use_balanced_sampler", True),
+        use_balanced_sampler=cfg["training"].get("use_balanced_sampler", False),
     )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
