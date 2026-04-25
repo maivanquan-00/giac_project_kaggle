@@ -85,29 +85,21 @@ class MultiOmicGATModule(nn.Module):
         # ── CpG: top-K sequence (B, K, H) used as Key/Value ───────────
         # Select top-K CpG nodes per patient by their feature value (abs)
         # → captures the most active methylation sites per patient
-        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq, "cpg")
-        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq, "mirna")
+        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq)
+        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq)
 
         return z_gene, z_cpg_seq, z_mirna_seq
 
-    def _topk_seq(self, X: torch.Tensor, E: torch.Tensor,
-                  K: int, modality: str) -> torch.Tensor:
-        B, F = X.shape
-        K = min(K, F)
+    def _topk_seq(self, X: torch.Tensor, E: torch.Tensor, K: int) -> torch.Tensor:
+        B, n_feat = X.shape
+        K = min(K, n_feat)
 
-        # Select top-K nodes by absolute feature value per patient
-        topk_idx = X.abs().topk(K, dim=1).indices          # (B, K)
+        topk_idx = X.abs().topk(K, dim=1).indices       # (B, K)
+        E_topk   = E[topk_idx]                          # (B, K, H)
 
-        # Gather node embeddings for selected nodes
-        E_topk = E[topk_idx]                               # (B, K, H)
-
-        # Weight embeddings by patient's actual feature value (signed)
-        # This preserves inter-patient variance — critical for attention
-        weights = X.gather(1, topk_idx).unsqueeze(-1)      # (B, K, 1)
-        z_seq = E_topk * weights                           # (B, K, H)
-
-        # L2-normalize each token vector (preserve direction, not magnitude)
-        # Avoids exploding values without collapsing inter-token variance
-        z_seq = torch.nn.functional.normalize(z_seq, p=2, dim=-1)
+        # Modulate each node embedding by patient's feature value (signed, standardised)
+        # Creates variance between tokens and between patients without destroying embedding
+        weights = X.gather(1, topk_idx).unsqueeze(-1)   # (B, K, 1)
+        z_seq   = E_topk + E_topk * weights             # (B, K, H)  residual modulation
 
         return z_seq
