@@ -133,12 +133,15 @@ class GIACModel(nn.Module):
             num_classes     = num_classes,
             label_smoothing = cfg_train.get("label_smoothing", 0.0),
         )
+        self.register_buffer("base_alpha", self.focal_loss.alpha.detach().clone())
         self.lambda_frob = cfg_train.get("lambda_frobenius", 0.01)
 
     def set_class_weights(self, w):
         norm = w / w.mean().clamp_min(1e-8)
         self.class_weights.copy_(norm.to(self.class_weights.device))
-        self.focal_loss.set_alpha(self.class_weights)
+        merged_alpha = self.class_weights * self.base_alpha
+        merged_alpha = merged_alpha / merged_alpha.mean().clamp_min(1e-8)
+        self.focal_loss.set_alpha(merged_alpha)
 
     def forward(self, batch, graph, return_interpretability=False):
         z_gene, z_cpg_seq, z_mirna_seq = self.gat(batch, graph)
