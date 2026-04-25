@@ -85,22 +85,23 @@ class MultiOmicGATModule(nn.Module):
                 for t, h in x_dict.items()
             }
 
-        # ── Gene: single summary vector (B, H) used as Query ──────────
+        # ── Gene: top-K summary vector (B, H) used as Query ──────────
+        # Select top-2K most active genes per patient instead of averaging all
+        # ~3500 genes (which dilutes the signal with housekeeping genes).
+        # Mean-pool the modulated embeddings to get a focused (B, H) query.
         z_gene = self.gene_norm(
-            torch.matmul(batch["gene"], x_dict["gene"])
-            / math.sqrt(batch["gene"].shape[1])
+            self._topk_seq(batch["gene"], x_dict["gene"],
+                           self.topk_seq * 2).mean(dim=1)
         )
 
         # ── CpG: top-K sequence (B, K, H) used as Key/Value ───────────
-        # Select top-K CpG nodes per patient by their feature value (abs)
-        # → captures the most active methylation sites per patient
         z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq, self.cpg_pos_emb)
         z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq, self.mirna_pos_emb)
 
         return z_gene, z_cpg_seq, z_mirna_seq
 
     def _topk_seq(self, X: torch.Tensor, E: torch.Tensor, K: int,
-                  pos_emb: nn.Embedding) -> torch.Tensor:
+                  pos_emb: nn.Embedding = None) -> torch.Tensor:
         B, n_feat = X.shape
         K = min(K, n_feat)
 
@@ -111,10 +112,8 @@ class MultiOmicGATModule(nn.Module):
         weights = X.gather(1, topk_idx).unsqueeze(-1)   # (B, K, 1)
         z_seq   = E_topk + E_topk * weights             # (B, K, H)
 
-        # Add rank-based positional encoding: rank-0 = most active feature.
-        # Gives each slot a unique learned signature so cross-attention can
-        # produce non-uniform weights even when base embeddings are similar.
-        rank_ids = torch.arange(K, device=X.device).unsqueeze(0).expand(B, -1)  # (B, K)
-        z_seq    = z_seq + pos_emb(rank_ids)             # (B, K, H)
+        if pos_emb is not None:
+            rank_ids = torch.arange(K, device=X.device).unsqueeze(0).expand(B, -1)
+            z_seq    = z_seq + pos_emb(rank_ids)
 
         return z_seq
