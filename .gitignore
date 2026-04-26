@@ -9,3 +9,12 @@ __pycache__/
 # Checkpoints & outputs
 checkpoints/
 *.pt
+
+#Preprocessed data
+config.py
+final_processed_data.py
+main_processed_omics.py
+preprocess_CpG.py
+preprocess_Gene.py
+preprocess_miRNA.py
+preprocess_labels.py

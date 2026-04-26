@@ -82,7 +82,7 @@ def build_hetero_graph(
             score_thresh = cfg_graph.get("ppi_score_threshold", 700),
         )
         if ppi_edges is not None:
-            graph["gene", "interacts", "gene"].edge_index = ppi_edges
+            graph["gene", "ppi", "gene"].edge_index = ppi_edges
             print(f"   Gene↔Gene edges : {ppi_edges.shape[1]:,}")
         else:
             print("   ⚠️  STRING PPI: không đọc được file")
@@ -276,6 +276,26 @@ def _load_ppi_edges(
  
  
 # ─────────────────────────────────────────────
+#  miRNA name normalisation (shared helper)
+# ─────────────────────────────────────────────
+def _normalize_tcga_mirna(name: str) -> str:
+    """Strip precursor-isoform suffix (-1/-2/-3) from TCGA/GDC stem-loop IDs.
+
+    Correctly handles:
+        hsa-mir-21-1   → hsa-mir-21   (isoform suffix, remove)
+        hsa-mir-100-1  → hsa-mir-100  (isoform suffix, remove)
+        hsa-mir-100    → hsa-mir-100  (number is part of name, keep)
+        hsa-mir-21     → hsa-mir-21   (no suffix, unchanged)
+
+    The old `re.sub(r'-\\d+$', ...)` was too greedy and would convert
+    hsa-mir-100 → hsa-mir, breaking the lookup for many miRNA families.
+    """
+    name = name.strip().lower()
+    m = re.match(r'^(hsa-(?:mir|let)-\S+?)-([1-9])$', name)
+    return m.group(1) if m else name
+
+
+# ─────────────────────────────────────────────
 #  miRTarBase
 # ─────────────────────────────────────────────
 def _load_mirna_edges(
@@ -302,7 +322,7 @@ def _load_mirna_edges(
     # MTI file dùng "hsa-let-7a-5p" (mature, có -5p/-3p)
     base_to_indices = {}
     for tcga_name, idx in mirna_idx.items():
-        base = re.sub(r'-\d+$', '', tcga_name.lower().strip())  # bỏ -1, -2 cuối
+        base = _normalize_tcga_mirna(tcga_name)
         base_to_indices.setdefault(base, []).append(idx)
  
     src_list, dst_list = [], []
@@ -535,25 +555,10 @@ def _load_mirna_family_edges(family_file, mirna_idx):
         name = name.strip().lower()
         return re.sub(r'-[35]p$', '', name)
  
-    def normalize_tcga(name: str) -> str:
-        """
-        'hsa-mir-21-1' → 'hsa-mir-21'   (precursor isoform -1, -2)
-        'hsa-mir-100'  → 'hsa-mir-100'  (number is part of name, keep it)
-        Rule: only strip trailing -N if N is a single digit AND
-              preceded by a letter (i.e. it's a precursor suffix like -1, -2).
-        """
-        name = name.strip().lower()
-        # Match pattern: ends with -[letter(s)]-[single digit]
-        # e.g. hsa-mir-21-1 → group = 'hsa-mir-21'
-        m = re.match(r'^(hsa-(?:mir|let)-\S+?)-([123])$', name)
-        if m:
-            return m.group(1)
-        return name
- 
-    # Build TCGA-normalised base → list of indices
+    # Build TCGA-normalised base -> list of indices (uses module-level _normalize_tcga_mirna)
     tcga_base_to_idx = {}
     for tcga_name, idx in mirna_idx.items():
-        base = normalize_tcga(tcga_name)
+        base = _normalize_tcga_mirna(tcga_name)
         tcga_base_to_idx.setdefault(base, []).append(idx)
  
     # Build family → list of mirna indices
