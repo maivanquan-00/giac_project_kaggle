@@ -91,9 +91,10 @@ def build_hetero_graph(
     if cfg_graph.get("use_mirna", True):
         mti_file    = os.path.join(graph_dir, "hsa_MTI.csv")
         mirna_edges = _load_mirna_edges(
-            mti_file  = mti_file,
-            mirna_idx = mirna_idx,   # lowercase keys
-            gene_idx  = gene_idx,    # UPPER keys
+            mti_file             = mti_file,
+            mirna_idx            = mirna_idx,   # lowercase keys
+            gene_idx             = gene_idx,    # UPPER keys
+            max_targets_per_mirna = cfg_graph.get("max_targets_per_mirna", 50),
         )
         if mirna_edges is not None:
             graph["mirna", "targets", "gene"].edge_index    = mirna_edges
@@ -302,6 +303,7 @@ def _load_mirna_edges(
     mti_file: str,
     mirna_idx: dict,  # lowercase keys
     gene_idx: dict,   # UPPER keys
+    max_targets_per_mirna: int = 50,
 ) -> torch.Tensor | None:
  
     if not os.path.exists(mti_file):
@@ -328,6 +330,8 @@ def _load_mirna_edges(
     src_list, dst_list = [], []
     seen = set()
  
+    mirna_target_count = {}   # m_i → number of targets already added
+
     for row in df[[mirna_col, gene_col]].itertuples(index=False, name=None):
         m_raw = str(row[0]).strip().lower()
         g_raw = str(row[1]).strip().upper()  # gene → UPPER
@@ -340,12 +344,15 @@ def _load_mirna_edges(
  
         g_i = gene_idx[g_raw]
         for m_i in base_to_indices[m_base]:
+            if mirna_target_count.get(m_i, 0) >= max_targets_per_mirna:
+                continue
             key = (m_i, g_i)
             if key in seen:
                 continue
             seen.add(key)
             src_list.append(m_i)
             dst_list.append(g_i)
+            mirna_target_count[m_i] = mirna_target_count.get(m_i, 0) + 1
  
     print(f"{len(src_list):,} edges")
  
