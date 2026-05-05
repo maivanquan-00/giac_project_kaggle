@@ -32,13 +32,13 @@ model:
   hidden_dim:  64
   gat_heads:   4
   gat_layers:  2
-  gat_dropout: 0.6
+  gat_dropout: 0.55
   topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4
   sparsemax_alpha: 1.5
   num_classes: 5
-  classifier_dropout: 0.6
+  classifier_dropout: 0.55
   final_dim:   32
 
 training:
@@ -57,7 +57,7 @@ training:
   label_smoothing: 0.05
   balanced_sampler: false
   lambda_frobenius: 0.001
-  patience: 15
+  patience: 20
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
