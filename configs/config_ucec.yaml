@@ -1,7 +1,8 @@
 data:
-  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
+  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_ucec"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
-  cancer_types: ["COAD", "ESCA", "READ", "STAD"]
+  emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/UCEC_extend"
+  cancer_types: ["UCEC"]
 
 preprocessing:
   gene_top_k:   3500
@@ -10,10 +11,10 @@ preprocessing:
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
-  minority_boost_gene:  200
-  minority_boost_meth:  150
+  minority_boost_gene:  150
+  minority_boost_meth:  100
   minority_boost_mirna: 0
-  minority_classes: [1, 3]
+  minority_classes: [3]   # POLE=3 (rarest subtype, ~7%)
 
 graph:
   emqtl_pval_threshold:    0.05
@@ -32,11 +33,11 @@ model:
   gat_heads:   4
   gat_layers:  2
   gat_dropout: 0.5
-  topk_seq:    32        # K tokens per modality fed to cross-attention as K/V
+  topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4
-  sparsemax_alpha: 1.5   # entmax15
-  num_classes: 5
+  sparsemax_alpha: 1.5
+  num_classes: 4
   classifier_dropout: 0.5
   final_dim:   32
 
@@ -52,7 +53,7 @@ training:
   weight_decay:          3.0e-3
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
-  focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
+  focal_alpha:     [1.0, 1.0, 1.0, 5.0]   # overridden at runtime by compute_class_weights
   label_smoothing: 0.05
   balanced_sampler: false
   lambda_frobenius: 0.001
@@ -60,7 +61,7 @@ training:
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
-  subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
+  subtype_names: ["CN_high", "CN_low", "MSI", "POLE"]
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"

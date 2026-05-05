@@ -22,9 +22,9 @@ from src.utils import (
     save_checkpoint, save_confusion_matrix_csv, set_seed,
 )
  
-SUBTYPE_NAMES = ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
- 
- 
+_DEFAULT_subtype_names = ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/config.yaml")
@@ -152,6 +152,7 @@ def compute_class_weights(dataset, num_classes, device):
  
  
 def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_name):
+    subtype_names = cfg["training"].get("subtype_names", _DEFAULT_subtype_names)
     balanced = cfg["training"].get("balanced_sampler", False)
     train_loader, val_loader, test_loader = make_loaders(
         datasets, cfg["training"]["batch_size"], balanced_sampler=balanced
@@ -205,7 +206,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         {k: datasets[k].label.cpu().numpy() for k in ["train", "val", "test"]},
         path=os.path.join(viz_dir, "class_distribution.png"),
         title=f"{fold_name} - Class Distribution",
-        class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]],
+        class_names=subtype_names[:cfg["model"]["num_classes"]],
     )
  
     for epoch in range(1, cfg["training"]["epochs"] + 1):
@@ -264,13 +265,13 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     plot_confusion_matrix_figure(test_labels, test_preds,
         path=os.path.join(viz_dir, "confusion_matrix_test.png"),
         title=f"{fold_name} - Test",
-        class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]], normalize=True)
+        class_names=subtype_names[:cfg["model"]["num_classes"]], normalize=True)
     print(f"\n\U0001f4cb Classification Report - {fold_name}")
     print_classification_report(test_labels, test_preds,
-                                class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]])
+                                class_names=subtype_names[:cfg["model"]["num_classes"]])
     save_confusion_matrix_csv(test_labels, test_preds,
         path=os.path.join(viz_dir, "confusion_matrix_test_absolute.csv"),
-        class_names=SUBTYPE_NAMES[:cfg["model"]["num_classes"]])
+        class_names=subtype_names[:cfg["model"]["num_classes"]])
  
     attn = collect_attn_stats(model, test_loader, graph, device)
     print(f"\n\U0001f50d Attention Stats - {fold_name}")

@@ -31,7 +31,7 @@ def build_hetero_graph(
 ) -> HeteroData:
  
     graph_dir = cfg_data["graph_dir"]
-    giac_dir  = os.path.join(graph_dir, "GIAC_main")
+    giac_dir  = cfg_data.get("emqtl_dir") or os.path.join(graph_dir, "GIAC_main")
  
     gene_names  = feature_names["gene"]
     cpg_names   = feature_names["meth"]
