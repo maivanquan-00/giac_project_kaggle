@@ -11,10 +11,10 @@ preprocessing:
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
-  minority_boost_gene:  100
-  minority_boost_meth:  80
+  minority_boost_gene:  200
+  minority_boost_meth:  150
   minority_boost_mirna: 0
-  minority_classes: [1, 4]   # Her2=1, Normal=4 (least frequent PAM50 subtypes)
+  minority_classes: [1, 2, 4]   # Her2=1, LumA=2 (77 mẫu), Normal=4 (36 mẫu)
 
 graph:
   emqtl_pval_threshold:    0.05
@@ -32,13 +32,13 @@ model:
   hidden_dim:  64
   gat_heads:   4
   gat_layers:  2
-  gat_dropout: 0.5
+  gat_dropout: 0.6
   topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4
   sparsemax_alpha: 1.5
   num_classes: 5
-  classifier_dropout: 0.5
+  classifier_dropout: 0.6
   final_dim:   32
 
 training:
@@ -57,7 +57,7 @@ training:
   label_smoothing: 0.05
   balanced_sampler: false
   lambda_frobenius: 0.001
-  patience: 20
+  patience: 15
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
