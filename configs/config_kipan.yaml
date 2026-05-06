@@ -33,7 +33,7 @@ model:
   gat_heads:   4
   gat_layers:  2
   gat_dropout: 0.5
-  topk_seq:    32
+  topk_seq:    48
   ca_heads:    4
   ca_dropout:  0.4
   sparsemax_alpha: 1.5
@@ -52,7 +52,7 @@ training:
   onecycle_final_div_factor: 100.0
   weight_decay:          3.0e-3
   node_emb_weight_decay: 1.5e-2
-  focal_gamma:     2.0
+  focal_gamma:     3.0
   focal_alpha:     [5.0, 1.0, 2.0]   # overridden at runtime by compute_class_weights
   label_smoothing: 0.05
   balanced_sampler: false
