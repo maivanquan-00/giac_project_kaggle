@@ -36,7 +36,7 @@ model:
   topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4
-  sparsemax_alpha: 1.5
+  sparsemax_alpha: 1.0
   num_classes: 5
   classifier_dropout: 0.55
   final_dim:   32
