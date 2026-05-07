@@ -204,76 +204,97 @@ def main():
         if per_ct:
             seed_per_ct[seed] = per_ct
 
-    # ── Aggregate & PRINT TO CELL (copy-paste friendly) ────────
+    # ── Aggregate ─────────────────────────────────────────────
     aggregated = aggregate_seeds(list(seed_summaries.values()))
-
-    print("\n\n" + "█" * 70)
-    print("█" + " " * 22 + "MULTI-SEED FINAL SUMMARY" + " " * 22 + "█")
-    print("█" * 70)
-    print(f"\nConfig    : {args.config}")
-    print(f"Seeds     : {args.seeds}")
-    print(f"N runs    : {len(args.seeds)} seeds × CV folds = {len(args.seeds) * 5} (assuming 5-fold)")
-    print(f"Timestamp : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    # ── Aggregate metric table ────────────────────────────────
-    print("\n┌─────────────────────────────────────────────────────────────────┐")
-    print("│  AGGREGATE (mean of seed-means ± std of seed-means)             │")
-    print("├─────────────────────────────────────────────────────────────────┤")
-    metric_order = ["accuracy", "precision", "recall", "f1", "f1_weighted"]
-    for m in metric_order:
-        if m not in aggregated:
-            continue
-        s = aggregated[m]
-        label = m.upper().replace("F1_WEIGHTED", "F1 (weighted)").replace("F1", "F1 (macro)" if m == "f1" else "F1 (weighted)")
-        per_seed_str = ", ".join(f"{v:.4f}" for v in s["per_seed_means"])
-        print(f"│  {label:14s}: {s['mean_of_means']:.4f} ± {s['std_of_means']:.4f}   "
-              f"per-seed: [{per_seed_str}]  │")
-    print("└─────────────────────────────────────────────────────────────────┘")
-
-    # ── Markdown table — copy-paste vào docs/issues/ ─────────
-    print("\n📋 MARKDOWN TABLE (copy-paste vào docs/issues/):")
-    print("```")
-    print(f"| Config | Macro F1 | Weighted F1 | Accuracy |")
-    print(f"|--------|----------|-------------|----------|")
     f1_macro = aggregated.get("f1", {})
     f1_w = aggregated.get("f1_weighted", {})
     acc = aggregated.get("accuracy", {})
     cfg_short = Path(args.config).stem
-    print(f"| {cfg_short} | {f1_macro.get('mean_of_means', 0):.4f} ± {f1_macro.get('std_of_means', 0):.4f} | "
-          f"{f1_w.get('mean_of_means', 0):.4f} ± {f1_w.get('std_of_means', 0):.4f} | "
-          f"{acc.get('mean_of_means', 0):.4f} ± {acc.get('std_of_means', 0):.4f} |")
-    print("```")
+    timestamp_iso = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # ── Per-seed per-fold F1 (chi tiết) ───────────────────────
+    # ── Single PASTE-READY markdown block ──────────────────────
+    # User chỉ cần copy block giữa hai dòng "═══" rồi paste vào docs/RESULTS.md
+    print("\n\n")
+    print("═" * 78)
+    print(" 📋 COPY KHỐI BÊN DƯỚI (đến dòng ═ tiếp theo) → PASTE VÀO ĐẦU docs/RESULTS.md")
+    print("═" * 78)
+    print()  # blank line
+
+    # ── Begin paste block ──
+    title = f"## [{timestamp_iso}] `{cfg_short}` — Macro F1: **{f1_macro.get('mean_of_means', 0):.4f} ± {f1_macro.get('std_of_means', 0):.4f}**"
+    print(title)
+    print()
+    print(f"**Config:** `{args.config}`  |  **Seeds:** {args.seeds}  |  **N runs:** {len(args.seeds)} × {len(next(iter(seed_per_fold.values()), [1,2,3,4,5]))} folds")
+    print()
+
+    # Aggregate metrics table
+    print("| Metric | Mean ± Std | Per-seed means |")
+    print("|--------|------------|----------------|")
+    label_map = [
+        ("f1",          "**Macro F1**"),
+        ("f1_weighted", "Weighted F1"),
+        ("accuracy",    "Accuracy"),
+        ("precision",   "Precision (macro)"),
+        ("recall",      "Recall (macro)"),
+    ]
+    for key, label in label_map:
+        if key not in aggregated:
+            continue
+        s = aggregated[key]
+        per_seed_str = ", ".join(f"{v:.4f}" for v in s["per_seed_means"])
+        print(f"| {label} | {s['mean_of_means']:.4f} ± {s['std_of_means']:.4f} | {per_seed_str} |")
+    print()
+
+    # Per-fold breakdown (compact)
     if seed_per_fold:
-        print("\n📊 PER-FOLD F1 (macro) — debug fold variance:")
-        print(f"{'Seed':>6} | " + " | ".join(f"Fold{i+1}" for i in range(5)) + " |  Mean")
-        print("-" * 55)
+        n_folds = max((len(f) for f in seed_per_fold.values()), default=5)
+        header = "| Seed | " + " | ".join(f"Fold {i+1}" for i in range(n_folds)) + " | Mean |"
+        sep = "|------|" + "|".join("---" for _ in range(n_folds)) + "|------|"
+        print("**Per-fold F1 (macro):**")
+        print()
+        print(header)
+        print(sep)
         for seed, folds in seed_per_fold.items():
             folds_str = " | ".join(f"{f:.4f}" for f in folds)
             mean = np.mean(folds) if folds else 0
-            print(f"{seed:>6} | {folds_str} | {mean:.4f}")
+            print(f"| {seed} | {folds_str} | {mean:.4f} |")
+        print()
 
-    # ── Per-cancer-type breakdown (nếu có) ─────────────────────
+    # Per-cancer-type (only if multi-cancer)
     if seed_per_ct:
-        print("\n🧬 PER-CANCER-TYPE F1 (avg over seeds):")
         all_cts = sorted(set().union(*[d.keys() for d in seed_per_ct.values()]))
-        print(f"{'Cancer':>8} | " + " | ".join(f"Seed {s}" for s in seed_per_ct.keys()) + " |   Avg")
-        print("-" * (12 + 11 * len(seed_per_ct) + 8))
-        for ct in all_cts:
-            row = []
-            vals = []
-            for seed, ct_dict in seed_per_ct.items():
-                if ct in ct_dict:
-                    f1m = ct_dict[ct]["f1_mean"]
-                    row.append(f"{f1m:.4f}")
-                    vals.append(f1m)
-                else:
-                    row.append("  N/A ")
-            avg = np.mean(vals) if vals else 0
-            print(f"{ct:>8} | " + " | ".join(row) + f" | {avg:.4f}")
+        if len(all_cts) > 1:
+            print("**Per-cancer-type F1 (mean across seeds):**")
+            print()
+            seeds_list = list(seed_per_ct.keys())
+            header = "| Cancer | " + " | ".join(f"Seed {s}" for s in seeds_list) + " | Avg |"
+            sep = "|--------|" + "|".join("---" for _ in seeds_list) + "|------|"
+            print(header)
+            print(sep)
+            for ct in all_cts:
+                vals = []
+                row_cells = []
+                for seed in seeds_list:
+                    if ct in seed_per_ct[seed]:
+                        v = seed_per_ct[seed][ct]["f1_mean"]
+                        vals.append(v)
+                        row_cells.append(f"{v:.4f}")
+                    else:
+                        row_cells.append("—")
+                avg = np.mean(vals) if vals else 0
+                print(f"| {ct} | " + " | ".join(row_cells) + f" | {avg:.4f} |")
+            print()
 
-    # ── JSON backup (KHÔNG cần download — đã có trong cell) ───
+    print("---")
+    print()
+    # ── End paste block ──
+
+    print("═" * 78)
+    print(" ↑↑↑ COPY KHỐI BÊN TRÊN — PASTE VÀO ĐẦU docs/RESULTS.md (sau dòng tiêu đề) ↑↑↑")
+    print("═" * 78)
+    print()
+
+    # Save JSON backup (silent, không in)
     summary = {
         "config": args.config,
         "seeds": args.seeds,
@@ -286,13 +307,7 @@ def main():
     summary_path = out_root / "multi_seed_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
-
-    # ── Cũng in raw JSON ra cell (copy nếu muốn save offline) ─
-    print("\n💾 RAW JSON (in case bạn muốn copy-paste lưu offline):")
-    print("```json")
-    print(json.dumps(summary, indent=2, ensure_ascii=False))
-    print("```")
-    print(f"\n(Backup file đã lưu tại: {summary_path} — không cần download nếu output cell đã đủ)")
+    print(f"💾 JSON backup (KHÔNG cần download): {summary_path}")
 
 
 if __name__ == "__main__":
