@@ -15,7 +15,7 @@ from src.data.dataset import build_cv_datasets, build_datasets
 from src.data.graph_builder import build_hetero_graph
 from src.model import GIACModel
 from src.utils import (
-    EarlyStopping, compute_metrics, ensure_dir,
+    EarlyStopping, compute_metrics, compute_per_cancer_type_f1, ensure_dir,
     plot_confusion_matrix_figure, plot_cv_metrics,
     plot_split_class_distribution, plot_training_curves,
     print_classification_report, print_metrics,
@@ -278,8 +278,19 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"   cpg  : std={attn['cpg_std']:.4f}  max={attn['cpg_max']:.4f}  nnz={attn['cpg_nnz']:.3f}  global_w={attn['modality_w_cpg']:.3f}")
     print(f"   mirna: std={attn['mirna_std']:.4f}  max={attn['mirna_max']:.4f}  nnz={attn['mirna_nnz']:.3f}  global_w={attn['modality_w_mirna']:.3f}")
  
+    # Per-cancer-type F1 breakdown (for multi-cancer datasets like GI)
+    per_ct_f1 = {}
+    test_cancer_types = getattr(datasets["test"], "cancer_types", None)
+    if test_cancer_types is not None and len(set(test_cancer_types)) > 0:
+        per_ct_f1 = compute_per_cancer_type_f1(test_labels, test_preds, test_cancer_types)
+        if len(per_ct_f1) > 1:
+            print(f"\n\U0001f9ec Per-cancer-type F1 - {fold_name}")
+            print(f"   {'Cancer':>8}  {'N':>5}  {'F1':>6}")
+            for ct, info in sorted(per_ct_f1.items()):
+                print(f"   {ct:>8}  {info['n']:>5}  {info['f1']:.4f}")
+
     return {"fold": fold_name, "best_val_f1": best_f1, "test_metrics": test_m,
-            "checkpoint": ckpt_path, "viz_dir": viz_dir}
+            "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1}
  
  
 def summarize_cv(results):
@@ -287,6 +298,17 @@ def summarize_cv(results):
     for name in ["accuracy", "precision", "recall", "f1"]:
         vals = np.array([r["test_metrics"][name] for r in results])
         print(f"  {name.upper():9s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
+
+    # Per-cancer-type summary across folds
+    all_per_ct = [r.get("per_ct_f1", {}) for r in results]
+    unique_cts = sorted(set().union(*[d.keys() for d in all_per_ct]))
+    if len(unique_cts) > 1:
+        print(f"\n\U0001f9ec Per-cancer-type F1 (5-fold mean ± std):")
+        print(f"  {'Cancer':>8}  {'N/fold':>6}  {'F1 mean':>8}  {'F1 std':>7}")
+        for ct in unique_cts:
+            f1_vals = np.array([d[ct]["f1"] for d in all_per_ct if ct in d])
+            n_vals  = np.array([d[ct]["n"]  for d in all_per_ct if ct in d])
+            print(f"  {ct:>8}  {n_vals.mean():>6.1f}  {f1_vals.mean():>8.4f}  {f1_vals.std(ddof=0):>7.4f}")
  
  
 def main():

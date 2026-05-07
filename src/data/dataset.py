@@ -111,16 +111,30 @@ def load_aligned_data(cfg: dict) -> dict:
     )
     print(f"\n  Samples sau align : {len(common_ids)}")
 
+    # Filter by cancer_types if specified in config and Cancer_Type column exists
+    filter_cts = cfg.get("data", {}).get("cancer_types", None)
+    if filter_cts is not None and "Cancer_Type" in labels.columns:
+        ct_series = labels.loc[common_ids, "Cancer_Type"]
+        keep_mask = ct_series.isin(filter_cts).values
+        common_ids = common_ids[keep_mask]
+        print(f"  Filter cancer_types={filter_cts}: {len(common_ids)} samples")
+
     labels = labels.loc[common_ids]
     gene = gene.loc[common_ids]
     meth = meth.loc[common_ids]
     mirna = mirna.loc[common_ids]
 
+    cancer_types = labels["Cancer_Type"].values if "Cancer_Type" in labels.columns else None
+
     y = labels["Target_Label"].values.astype(np.int64)
     print(f"  Phân bố subtype   : {dict(zip(*np.unique(y, return_counts=True)))}")
+    if cancer_types is not None:
+        unique_cts, ct_counts = np.unique(cancer_types, return_counts=True)
+        print(f"  Phân bố cancer_type: {dict(zip(unique_cts, ct_counts))}")
 
     return {
         "patient_ids": common_ids.to_numpy(),
+        "cancer_types": cancer_types,
         "labels": y,
         "gene": gene.values.astype(np.float32),
         "meth": meth.values.astype(np.float32),
@@ -166,7 +180,10 @@ def _package_split(
         "mirna": select_feature_names(raw["feature_names"]["mirna"], preprocess["mirna"]["indices"]),
     }
 
+    cancer_types = raw.get("cancer_types")
+
     def make_dataset(indices):
+        ct = cancer_types[indices] if cancer_types is not None else None
         return OmicDataset(
             gene=X_gene[indices],
             meth=X_meth[indices],
@@ -174,6 +191,7 @@ def _package_split(
             label=y[indices],
             feature_names=feature_names,
             patient_ids=raw["patient_ids"][indices],
+            cancer_types=ct,
         )
 
     datasets = {
@@ -336,13 +354,14 @@ def _resolve_existing_path(root: str, candidates: List[str], asset_name: str) ->
 
 
 class OmicDataset(Dataset):
-    def __init__(self, gene, meth, mirna, label, feature_names, patient_ids):
+    def __init__(self, gene, meth, mirna, label, feature_names, patient_ids, cancer_types=None):
         self.gene = torch.from_numpy(gene)
         self.meth = torch.from_numpy(meth)
         self.mirna = torch.from_numpy(mirna)
         self.label = torch.from_numpy(label)
         self.feature_names = feature_names
         self.patient_ids = list(patient_ids)
+        self.cancer_types = list(cancer_types) if cancer_types is not None else None
 
     def __len__(self):
         return len(self.label)

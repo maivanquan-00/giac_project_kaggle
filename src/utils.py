@@ -35,6 +35,27 @@ def compute_metrics(y_true, y_pred) -> dict:
     }
 
 
+def compute_per_cancer_type_f1(labels, preds, cancer_types) -> dict:
+    """Macro F1 breakdown per cancer type.
+
+    Returns dict: {cancer_type_str: {"f1": float, "n": int}}
+    Only meaningful for multi-cancer datasets (GI). For single-cancer
+    datasets, returns a single-key dict.
+    """
+    labels = np.asarray(labels)
+    preds = np.asarray(preds)
+    cancer_types = np.asarray(cancer_types)
+    unique_cts = sorted(set(cancer_types.tolist()))
+    return {
+        ct: {
+            "f1": f1_score(labels[cancer_types == ct], preds[cancer_types == ct],
+                           average="macro", zero_division=0),
+            "n": int((cancer_types == ct).sum()),
+        }
+        for ct in unique_cts
+    }
+
+
 def print_metrics(metrics: dict, split: str = ""):
     prefix = f"[{split}] " if split else ""
     print(

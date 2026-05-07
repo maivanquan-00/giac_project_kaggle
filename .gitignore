@@ -1,6 +1,14 @@
 # Logs & experiment notes
 TestPhase/
 *.md
+Test/
+*.md
+Test_BRCA/
+*.md
+Test_KIPAN/
+*.md
+Test_UCEC/
+*.md
 
 # Python
 __pycache__/
@@ -21,3 +29,7 @@ preprocess_labels.py
 make_gene_symbol.py
 PIPELINE.md
 Phiếu_giao_nhiệm_vụ 1.xlsx
+
+
+#Documents
+docs/
