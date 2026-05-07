@@ -62,7 +62,7 @@ def parse_cv_summary(stdout: str) -> dict | None:
           F1_WEIGHTED: mean=0.8388  std=0.0454
     """
     pattern = re.compile(
-        r"^\s+([A-Z_]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)\s*$",
+        r"^\s+([A-Z_0-9]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)\s*$",
         re.MULTILINE,
     )
     matches = pattern.findall(stdout)

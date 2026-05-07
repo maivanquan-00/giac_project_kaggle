@@ -40,6 +40,7 @@ python run_multi_seed.py --config configs/quickwins/gi_07a_focal12.yaml  # +07.A
 | `ucec_07b_smoothing.yaml` | UCEC | `label_smoothing: 0.10` | POLE stability | Thấp |
 | `kipan_07b_smoothing.yaml` | KIPAN | `label_smoothing: 0.10` | KICH stability | Thấp |
 | `kipan_07e_minority02.yaml` | KIPAN | `minority_classes: [0, 2]` | Boost cả KIRP cùng KICH | Trung tính |
+| `kipan_07g_topk48.yaml` | KIPAN | `topk_seq: 48` | OPUS_PROMPT evidence: cải thiện KICH F1 floor 0.75→0.81 | Thấp |
 
 ## Quy tắc test
 
