@@ -33,7 +33,7 @@ model:
   gat_heads:   4
   gat_layers:  2
   gat_dropout: 0.5
-  topk_seq:    48
+  topk_seq:    64
   ca_heads:    4
   ca_dropout:  0.4
   sparsemax_alpha: 1.5

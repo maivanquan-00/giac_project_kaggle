@@ -11,8 +11,8 @@ preprocessing:
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
-  minority_boost_gene:  150
-  minority_boost_meth:  100
+  minority_boost_gene:  100
+  minority_boost_meth:  50
   minority_boost_mirna: 0
   minority_classes: [3]   # POLE=3 (rarest subtype, ~7%)
 
