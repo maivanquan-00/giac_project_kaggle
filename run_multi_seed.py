@@ -149,11 +149,11 @@ def main():
         log_path = seed_dir / "stdout.log"
 
         print(f"\n{'='*60}")
-        print(f"  Running seed={seed}")
-        print(f"{'='*60}")
+        print(f"  Running seed={seed}  ({args.seeds.index(seed)+1}/{len(args.seeds)})")
+        print(f"{'='*60}", flush=True)
 
         cmd = [
-            args.python, "train.py",
+            args.python, "-u", "train.py",   # -u = unbuffered → live output
             "--config", args.config,
             "--seed", str(seed),
             "--save-dir", str(save_dir),
@@ -161,17 +161,31 @@ def main():
         if args.cv_folds is not None:
             cmd += ["--cv-folds", str(args.cv_folds)]
 
-        print(f"$ {' '.join(cmd)}")
+        print(f"$ {' '.join(cmd)}", flush=True)
 
+        # Stream subprocess output → notebook cell line-by-line + capture for parsing
+        # Đồng thời lưu vào log file (backup, không bắt buộc download).
+        captured_lines = []
         with open(log_path, "w", encoding="utf-8") as log_f:
-            proc = subprocess.run(cmd, stdout=log_f, stderr=subprocess.STDOUT, text=True)
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,                    # line-buffered
+                encoding="utf-8",
+                errors="replace",
+            )
+            for line in proc.stdout:
+                print(line, end="", flush=True)   # → cell live
+                log_f.write(line)                  # → file backup
+                captured_lines.append(line)
+            proc.wait()
 
-        with open(log_path, "r", encoding="utf-8") as f:
-            stdout = f.read()
+        stdout = "".join(captured_lines)
 
         if proc.returncode != 0:
-            print(f"❌ Seed {seed} FAILED with returncode={proc.returncode}")
-            print(f"   Log: {log_path}")
+            print(f"\n❌ Seed {seed} FAILED with returncode={proc.returncode}")
             continue
 
         cv = parse_cv_summary(stdout)
@@ -179,27 +193,87 @@ def main():
         per_ct = parse_per_cancer_type(stdout)
 
         if cv:
-            print(f"✅ Seed {seed} done — F1 macro = {cv.get('f1', {}).get('mean', '?'):.4f}, "
-                  f"F1 weighted = {cv.get('f1_weighted', {}).get('mean', '?'):.4f}")
+            print(f"\n✅ Seed {seed} done — F1 macro = {cv.get('f1', {}).get('mean', 0):.4f}, "
+                  f"F1 weighted = {cv.get('f1_weighted', {}).get('mean', 0):.4f}", flush=True)
             seed_summaries[seed] = cv
         else:
-            print(f"⚠️  Seed {seed}: không parse được CV summary từ log")
+            print(f"\n⚠️  Seed {seed}: không parse được CV summary từ log", flush=True)
 
         if per_fold:
             seed_per_fold[seed] = per_fold
         if per_ct:
             seed_per_ct[seed] = per_ct
 
-    # ── Aggregate ─────────────────────────────────────────────
+    # ── Aggregate & PRINT TO CELL (copy-paste friendly) ────────
     aggregated = aggregate_seeds(list(seed_summaries.values()))
 
-    print("\n" + "=" * 60)
-    print("  🎯 MULTI-SEED AGGREGATE")
-    print("=" * 60)
-    for metric, stats in aggregated.items():
-        print(f"  {metric.upper():13s}: {stats['mean_of_means']:.4f} ± {stats['std_of_means']:.4f}  "
-              f"(over {stats['n_seeds']} seeds)")
+    print("\n\n" + "█" * 70)
+    print("█" + " " * 22 + "MULTI-SEED FINAL SUMMARY" + " " * 22 + "█")
+    print("█" * 70)
+    print(f"\nConfig    : {args.config}")
+    print(f"Seeds     : {args.seeds}")
+    print(f"N runs    : {len(args.seeds)} seeds × CV folds = {len(args.seeds) * 5} (assuming 5-fold)")
+    print(f"Timestamp : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+    # ── Aggregate metric table ────────────────────────────────
+    print("\n┌─────────────────────────────────────────────────────────────────┐")
+    print("│  AGGREGATE (mean of seed-means ± std of seed-means)             │")
+    print("├─────────────────────────────────────────────────────────────────┤")
+    metric_order = ["accuracy", "precision", "recall", "f1", "f1_weighted"]
+    for m in metric_order:
+        if m not in aggregated:
+            continue
+        s = aggregated[m]
+        label = m.upper().replace("F1_WEIGHTED", "F1 (weighted)").replace("F1", "F1 (macro)" if m == "f1" else "F1 (weighted)")
+        per_seed_str = ", ".join(f"{v:.4f}" for v in s["per_seed_means"])
+        print(f"│  {label:14s}: {s['mean_of_means']:.4f} ± {s['std_of_means']:.4f}   "
+              f"per-seed: [{per_seed_str}]  │")
+    print("└─────────────────────────────────────────────────────────────────┘")
+
+    # ── Markdown table — copy-paste vào docs/issues/ ─────────
+    print("\n📋 MARKDOWN TABLE (copy-paste vào docs/issues/):")
+    print("```")
+    print(f"| Config | Macro F1 | Weighted F1 | Accuracy |")
+    print(f"|--------|----------|-------------|----------|")
+    f1_macro = aggregated.get("f1", {})
+    f1_w = aggregated.get("f1_weighted", {})
+    acc = aggregated.get("accuracy", {})
+    cfg_short = Path(args.config).stem
+    print(f"| {cfg_short} | {f1_macro.get('mean_of_means', 0):.4f} ± {f1_macro.get('std_of_means', 0):.4f} | "
+          f"{f1_w.get('mean_of_means', 0):.4f} ± {f1_w.get('std_of_means', 0):.4f} | "
+          f"{acc.get('mean_of_means', 0):.4f} ± {acc.get('std_of_means', 0):.4f} |")
+    print("```")
+
+    # ── Per-seed per-fold F1 (chi tiết) ───────────────────────
+    if seed_per_fold:
+        print("\n📊 PER-FOLD F1 (macro) — debug fold variance:")
+        print(f"{'Seed':>6} | " + " | ".join(f"Fold{i+1}" for i in range(5)) + " |  Mean")
+        print("-" * 55)
+        for seed, folds in seed_per_fold.items():
+            folds_str = " | ".join(f"{f:.4f}" for f in folds)
+            mean = np.mean(folds) if folds else 0
+            print(f"{seed:>6} | {folds_str} | {mean:.4f}")
+
+    # ── Per-cancer-type breakdown (nếu có) ─────────────────────
+    if seed_per_ct:
+        print("\n🧬 PER-CANCER-TYPE F1 (avg over seeds):")
+        all_cts = sorted(set().union(*[d.keys() for d in seed_per_ct.values()]))
+        print(f"{'Cancer':>8} | " + " | ".join(f"Seed {s}" for s in seed_per_ct.keys()) + " |   Avg")
+        print("-" * (12 + 11 * len(seed_per_ct) + 8))
+        for ct in all_cts:
+            row = []
+            vals = []
+            for seed, ct_dict in seed_per_ct.items():
+                if ct in ct_dict:
+                    f1m = ct_dict[ct]["f1_mean"]
+                    row.append(f"{f1m:.4f}")
+                    vals.append(f1m)
+                else:
+                    row.append("  N/A ")
+            avg = np.mean(vals) if vals else 0
+            print(f"{ct:>8} | " + " | ".join(row) + f" | {avg:.4f}")
+
+    # ── JSON backup (KHÔNG cần download — đã có trong cell) ───
     summary = {
         "config": args.config,
         "seeds": args.seeds,
@@ -209,11 +283,16 @@ def main():
         "per_seed_per_fold_f1": {str(k): v for k, v in seed_per_fold.items()},
         "per_seed_per_cancer_type": {str(k): v for k, v in seed_per_ct.items()},
     }
-
     summary_path = out_root / "multi_seed_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
-    print(f"\n💾 Summary đã lưu: {summary_path}")
+
+    # ── Cũng in raw JSON ra cell (copy nếu muốn save offline) ─
+    print("\n💾 RAW JSON (in case bạn muốn copy-paste lưu offline):")
+    print("```json")
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    print("```")
+    print(f"\n(Backup file đã lưu tại: {summary_path} — không cần download nếu output cell đã đủ)")
 
 
 if __name__ == "__main__":
