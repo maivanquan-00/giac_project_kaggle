@@ -1,7 +1,5 @@
 # Phân loại bệnh nhân ung thư dựa trên đồ thị dị thể đa omics kết hợp GAT và Cross-Attention
 
-**Đồ án tốt nghiệp — Đại học Bách Khoa Hà Nội, Kỳ 2025.2**
-Sinh viên: Mai Văn Quân (20225071) — GVHD: Lê Đức Hậu
 
 ---
 
@@ -87,32 +85,32 @@ Khác với MoXGATE (baseline) dùng đánh giá single random split, mô hình 
 
 ### Node types
 
-| Node type | Số nodes (sau feature selection) | Nguồn dữ liệu |
-|-----------|----------------------------------|---------------|
+| Node type | Số nodes (sau feature selection) | Nguồn dữ liệu                       |
+| --------- | -------------------------------- | ----------------------------------- |
 | `gene`    | ~3,500 (top-K theo ANOVA)        | TCGA gene expression (ENSG symbols) |
 | `cpg`     | ~3,500 (top-K theo ANOVA)        | TCGA DNA methylation (cg... probes) |
-| `mirna`   | 1,881 (toàn bộ)                  | TCGA miRNA expression |
+| `mirna`   | 1,881 (toàn bộ)                  | TCGA miRNA expression               |
 
 ### Edge types (7 loại)
 
-| Edge type | Quan hệ sinh học | Nguồn | Số lượng (BRCA) |
-|-----------|-----------------|-------|----------------|
-| `cpg → gene` (regulates) | Biểu hiện甲基 hoá điều tiết gene | emQTL (TCGA, p-value ≤ 0.05) | ~52,000 |
-| `gene ↔ gene` (ppi) | Protein-protein interaction | STRING v12, score ≥ 700 | ~22,000 |
-| `mirna → gene` (targets) | miRNA ức chế/điều tiết biểu hiện gene | miRTarBase (hsa_MTI.csv) | ~147,000 |
-| `gene ↔ gene` (copathway) | Tham gia cùng pathway sinh học | Reactome (pathway size ≤ 50) | ~15,000 |
-| `mirna ↔ mirna` (samefamily) | Cùng seed family (cơ chế tương tự) | TargetScan / miR Family Info | ~1,400 |
-| `cpg ↔ mirna` (coregulates) | CpG và miRNA cùng điều tiết 1 gene | Suy diễn từ emQTL + miRTarBase | ~18,000 |
-| Self-loops | Giữ thông tin ban đầu qua GATv2 | — | = số nodes |
+| Edge type                    | Quan hệ sinh học                      | Nguồn                          | Số lượng (BRCA) |
+| ---------------------------- | ------------------------------------- | ------------------------------ | --------------- |
+| `cpg → gene` (regulates)     | Biểu hiện甲基 hoá điều tiết gene      | emQTL (TCGA, p-value ≤ 0.05)   | ~52,000         |
+| `gene ↔ gene` (ppi)          | Protein-protein interaction           | STRING v12, score ≥ 700        | ~22,000         |
+| `mirna → gene` (targets)     | miRNA ức chế/điều tiết biểu hiện gene | miRTarBase (hsa_MTI.csv)       | ~147,000        |
+| `gene ↔ gene` (copathway)    | Tham gia cùng pathway sinh học        | Reactome (pathway size ≤ 50)   | ~15,000         |
+| `mirna ↔ mirna` (samefamily) | Cùng seed family (cơ chế tương tự)    | TargetScan / miR Family Info   | ~1,400          |
+| `cpg ↔ mirna` (coregulates)  | CpG và miRNA cùng điều tiết 1 gene    | Suy diễn từ emQTL + miRTarBase | ~18,000         |
+| Self-loops                   | Giữ thông tin ban đầu qua GATv2       | —                              | = số nodes      |
 
 ### Ghi chú về emQTL theo dataset
 
-| Dataset | emQTL edges | Ghi chú |
-|---------|-------------|---------|
-| BRCA | ~52,000 | Phong phú — CpG kết nối tốt vào gene graph |
-| KIPAN | ~50,000+ | Phong phú |
-| GI (STAD/COAD/ESCA/READ) | ~40,000+ | Phong phú |
-| UCEC | ~3,000 | Thưa — giới hạn chính của mô hình trên dataset này |
+| Dataset                  | emQTL edges | Ghi chú                                            |
+| ------------------------ | ----------- | -------------------------------------------------- |
+| BRCA                     | ~52,000     | Phong phú — CpG kết nối tốt vào gene graph         |
+| KIPAN                    | ~50,000+    | Phong phú                                          |
+| GI (STAD/COAD/ESCA/READ) | ~40,000+    | Phong phú                                          |
+| UCEC                     | ~3,000      | Thưa — giới hạn chính của mô hình trên dataset này |
 
 ---
 
@@ -214,16 +212,16 @@ Raw TCGA data (gene: ~20K, meth: ~23K, mirna: 1881)
 
 ## Training pipeline (`train.py`)
 
-| Thành phần | Chi tiết |
-|-----------|---------|
-| **Đánh giá** | 5-fold Stratified Cross-Validation (metric: val_f1) |
-| **Optimizer** | AdamW, `weight_decay=3e-3`, `node_emb_weight_decay=1.5e-2` |
-| **Scheduler** | OneCycleLR (`max_lr=5e-4`, `pct_start=0.1`) |
-| **Loss** | Focal Loss + Frobenius regularization |
-| **Imbalance** | `WeightedRandomSampler` (optional) + `minority_boost` oversampling |
-| **Early stopping** | Patience=20 epochs trên `val_f1` |
-| **Gradient clipping** | max_norm=1.0 |
-| **Epochs** | 150 |
+| Thành phần            | Chi tiết                                                           |
+| --------------------- | ------------------------------------------------------------------ |
+| **Đánh giá**          | 5-fold Stratified Cross-Validation (metric: val_f1)                |
+| **Optimizer**         | AdamW, `weight_decay=3e-3`, `node_emb_weight_decay=1.5e-2`         |
+| **Scheduler**         | OneCycleLR (`max_lr=5e-4`, `pct_start=0.1`)                        |
+| **Loss**              | Focal Loss + Frobenius regularization                              |
+| **Imbalance**         | `WeightedRandomSampler` (optional) + `minority_boost` oversampling |
+| **Early stopping**    | Patience=20 epochs trên `val_f1`                                   |
+| **Gradient clipping** | max_norm=1.0                                                       |
+| **Epochs**            | 150                                                                |
 
 ---
 
@@ -265,28 +263,28 @@ giac_project_kaggle/
 
 > ⚠️ MoXGATE dùng **single random split** — không phải 5-fold CV. Hai phương pháp đánh giá không hoàn toàn so sánh được trực tiếp. 5-fold CV tin cậy thống kê hơn nhưng thường cho con số thấp hơn do trung bình qua nhiều fold khó hơn.
 
-| Dataset | Subtypes | Mô hình đề xuất (5-fold CV) | MoXGATE (single split) | Nhận xét |
-|---------|----------|----------------------------|------------------------|---------|
-| UCEC | 4 (CN_high/CN_low/MSI/POLE) | **0.7609** ± — | 0.7487 | **Vượt baseline** |
-| BRCA | 5 (Basal/Her2/LumA/LumB/Normal) | 0.8333 ± 0.0478 | 0.8723 | Cạnh tranh (gap ~0.04) |
-| KIPAN | 3 (KICH/KIRC/KIRP) | 0.9210 ± 0.0142 | 0.9561 | Cạnh tranh (gap ~0.04) |
-| GI | 5 (CIN/GS/MSI/HM-SNV/EBV) | — | 0.8333 | Dataset gốc |
+| Dataset | Subtypes                        | Mô hình đề xuất (5-fold CV) | MoXGATE (single split) | Nhận xét               |
+| ------- | ------------------------------- | --------------------------- | ---------------------- | ---------------------- |
+| UCEC    | 4 (CN_high/CN_low/MSI/POLE)     | **0.7609** ± —              | 0.7487                 | **Vượt baseline**      |
+| BRCA    | 5 (Basal/Her2/LumA/LumB/Normal) | 0.8333 ± 0.0478             | 0.8723                 | Cạnh tranh (gap ~0.04) |
+| KIPAN   | 3 (KICH/KIRC/KIRP)              | 0.9210 ± 0.0142             | 0.9561                 | Cạnh tranh (gap ~0.04) |
+| GI      | 5 (CIN/GS/MSI/HM-SNV/EBV)       | —                           | 0.8333                 | Dataset gốc            |
 
 ### Tiến trình thực nghiệm BRCA
 
-| Exp | Thay đổi chính | F1 (5-fold) |
-|-----|---------------|------------|
-| Exp1 | Config mặc định | 0.7704 |
-| Exp2 | Tăng patience, dropout cao hơn | 0.7536 |
-| **Exp3** | **Revert dropout, balanced_sampler=false** | **0.8333** |
+| Exp      | Thay đổi chính                             | F1 (5-fold) |
+| -------- | ------------------------------------------ | ----------- |
+| Exp1     | Config mặc định                            | 0.7704      |
+| Exp2     | Tăng patience, dropout cao hơn             | 0.7536      |
+| **Exp3** | **Revert dropout, balanced_sampler=false** | **0.8333**  |
 
 ### Tiến trình thực nghiệm KIPAN
 
-| Exp | Thay đổi chính | F1 (5-fold) |
-|-----|---------------|------------|
-| Exp1 | Config mặc định | 0.8999 |
-| **Exp2** | **minority_boost tăng, ca_dropout=0.4** | **0.9210** |
-| Exp3 | balanced_sampler=true (backfired) | 0.9009 |
+| Exp      | Thay đổi chính                          | F1 (5-fold) |
+| -------- | --------------------------------------- | ----------- |
+| Exp1     | Config mặc định                         | 0.8999      |
+| **Exp2** | **minority_boost tăng, ca_dropout=0.4** | **0.9210**  |
+| Exp3     | balanced_sampler=true (backfired)       | 0.9009      |
 
 ### Quan sát về interpretability
 
@@ -362,12 +360,12 @@ training:
 
 Mỗi dataset cần 4 file CSV:
 
-| File | Nội dung |
-|------|---------|
-| `labels.csv` | `sample_id, subtype_label` |
-| `gene.csv` | `sample_id, ENSG00000...` (gene expression, log2-normalized) |
-| `meth.csv` | `sample_id, cg12345678...` (beta values 0–1) |
-| `mirna.csv` | `sample_id, hsa-mir-21...` (miRNA expression) |
+| File         | Nội dung                                                     |
+| ------------ | ------------------------------------------------------------ |
+| `labels.csv` | `sample_id, subtype_label`                                   |
+| `gene.csv`   | `sample_id, ENSG00000...` (gene expression, log2-normalized) |
+| `meth.csv`   | `sample_id, cg12345678...` (beta values 0–1)                 |
+| `mirna.csv`  | `sample_id, hsa-mir-21...` (miRNA expression)                |
 
 Dữ liệu lấy từ TCGA qua GDC Data Portal, preprocessing theo pipeline của TCGA multi-omics.
 
@@ -375,15 +373,15 @@ Dữ liệu lấy từ TCGA qua GDC Data Portal, preprocessing theo pipeline c�
 
 ## Nguồn prior knowledge sinh học
 
-| Nguồn | Dùng cho | File |
-|-------|----------|------|
-| emQTL (TCGA) | CpG → Gene edges | `TCGA_emQTL_{CANCER}.txt` |
-| STRING v12 | Gene ↔ Gene PPI edges | `9606.protein.links.v12.0.txt` |
-| Reactome | Gene ↔ Gene co-pathway | `Ensembl2Reactome_All_Levels.txt` |
-| miRTarBase | miRNA → Gene edges | `hsa_MTI.csv` |
-| TargetScan | miRNA ↔ miRNA family | `miR_Family_Info.txt` |
-| HGNC | Ensembl → gene symbol mapping | `hgnc_complete_set.txt` |
-| STRING alias | ENSP → gene symbol mapping | `9606.protein.aliases.v12.0.txt` |
+| Nguồn        | Dùng cho                      | File                              |
+| ------------ | ----------------------------- | --------------------------------- |
+| emQTL (TCGA) | CpG → Gene edges              | `TCGA_emQTL_{CANCER}.txt`         |
+| STRING v12   | Gene ↔ Gene PPI edges         | `9606.protein.links.v12.0.txt`    |
+| Reactome     | Gene ↔ Gene co-pathway        | `Ensembl2Reactome_All_Levels.txt` |
+| miRTarBase   | miRNA → Gene edges            | `hsa_MTI.csv`                     |
+| TargetScan   | miRNA ↔ miRNA family          | `miR_Family_Info.txt`             |
+| HGNC         | Ensembl → gene symbol mapping | `hgnc_complete_set.txt`           |
+| STRING alias | ENSP → gene symbol mapping    | `9606.protein.aliases.v12.0.txt`  |
 
 ---
 

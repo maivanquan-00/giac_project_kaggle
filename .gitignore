@@ -1,14 +1,6 @@
 # Logs & experiment notes
-TestPhase/
-*.md
-Test/
-*.md
-Test_BRCA/
-*.md
-Test_KIPAN/
-*.md
-Test_UCEC/
-*.md
+test_old/
+test_new/
 
 # Python
 __pycache__/
@@ -19,17 +11,16 @@ checkpoints/
 *.pt
 
 #Preprocessed data
-config.py
-final_process_omics.py
-main_preprocess_omics.py
-preprocess_CpG.py
-preprocess_Gene.py
-preprocess_miRNA.py
-preprocess_labels.py
-make_gene_symbol.py
+preprocessed_data/
+
+
 PIPELINE.md
-Phiếu_giao_nhiệm_vụ 1.xlsx
+Phiếu_giao_nhiệm_vụ.xlsx
 
 
 #Documents
 docs/
+
+CLAUDE.md
+OPUS_PROMPT.md
+output_reproduced.md

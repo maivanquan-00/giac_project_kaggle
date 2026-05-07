@@ -1,0 +1,220 @@
+"""
+run_multi_seed.py
+-----------------
+Wrapper chạy train.py với nhiều seeds, aggregate kết quả mean ± std.
+
+Usage:
+    python run_multi_seed.py --config configs/config.yaml
+    python run_multi_seed.py --config configs/config_brca.yaml --seeds 42 123 2024
+    python run_multi_seed.py --config configs/config_ucec.yaml --output-dir results/ucec_multiseed
+
+Tại sao cần script này:
+    - Mỗi config hiện chỉ chạy 1 seed × 5 folds = 5 runs.
+    - Để có statistical significance cần multi-seed: 3 seeds × 5 folds = 15 runs.
+    - Script này chạy train.py 3 lần (mỗi lần 1 seed), parse output, aggregate.
+
+Output:
+    {output_dir}/
+      ├── seed_42/checkpoints/...        (output gốc của train.py)
+      ├── seed_123/checkpoints/...
+      ├── seed_2024/checkpoints/...
+      ├── seed_42/stdout.log             (full log)
+      ├── seed_123/stdout.log
+      ├── seed_2024/stdout.log
+      └── multi_seed_summary.json        (aggregated mean ± std)
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True, help="Path tới config YAML")
+    parser.add_argument("--seeds", type=int, nargs="+", default=[42, 123, 2024],
+                        help="List seeds (default: 42 123 2024)")
+    parser.add_argument("--output-dir", default=None,
+                        help="Root dir cho output. Default: results/<config_name>_multiseed_<timestamp>")
+    parser.add_argument("--cv-folds", type=int, default=None,
+                        help="Override cv_folds (pass through to train.py)")
+    parser.add_argument("--python", default=sys.executable,
+                        help="Python executable (default: current sys.executable)")
+    return parser.parse_args()
+
+
+def parse_cv_summary(stdout: str) -> dict | None:
+    """Extract '5-fold CV summary' block từ train.py stdout.
+
+    Train.py prints:
+        📈 5-fold CV summary
+          ACCURACY   : mean=0.8331  std=0.0495
+          PRECISION  : mean=0.6892  std=0.0719
+          RECALL     : mean=0.7087  std=0.0488
+          F1         : mean=0.6886  std=0.0567
+          F1_WEIGHTED: mean=0.8388  std=0.0454
+    """
+    pattern = re.compile(
+        r"^\s+([A-Z_]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)\s*$",
+        re.MULTILINE,
+    )
+    matches = pattern.findall(stdout)
+    if not matches:
+        return None
+    return {name.lower(): {"mean": float(m), "std": float(s)} for name, m, s in matches}
+
+
+def parse_per_fold_f1(stdout: str) -> list[float]:
+    """Extract per-fold test F1 (macro) — line dạng: '✅ Test F1:     0.7006'."""
+    return [float(v) for v in re.findall(r"✅ Test F1:\s+([\d.]+)", stdout)]
+
+
+def parse_per_cancer_type(stdout: str) -> dict | None:
+    """Extract per-cancer-type 5-fold mean ± std từ train.py stdout.
+
+    Format:
+        🧬 Per-cancer-type F1 (5-fold mean ± std):
+          Cancer  N/fold   F1 mean   F1 std
+            COAD    68.0    0.6982   0.1002
+            STAD    76.0    0.6720   0.0776
+    """
+    section = re.search(
+        r"Per-cancer-type F1 \(5-fold mean.*?\):\s*\n.*?Cancer.*?\n((?:\s+\S+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s*\n?)+)",
+        stdout,
+    )
+    if not section:
+        return None
+    rows = re.findall(r"^\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*$",
+                      section.group(1), re.MULTILINE)
+    return {ct: {"n_per_fold": float(n), "f1_mean": float(m), "f1_std": float(s)}
+            for ct, n, m, s in rows}
+
+
+def aggregate_seeds(seed_results: list[dict]) -> dict:
+    """Aggregate stats qua nhiều seeds.
+
+    Mỗi seed_result có format từ parse_cv_summary:
+        {"f1": {"mean": 0.69, "std": 0.06}, "f1_weighted": {...}, ...}
+
+    Output: mean ± std OF MEANS (i.e., "mean of seed means", "std of seed means").
+    Std của std cũng có thể compute nhưng ít ý nghĩa — bỏ qua.
+    """
+    if not seed_results:
+        return {}
+    metric_names = sorted(set().union(*[r.keys() for r in seed_results if r]))
+    out = {}
+    for m in metric_names:
+        means = [r[m]["mean"] for r in seed_results if r and m in r]
+        if not means:
+            continue
+        means_arr = np.array(means)
+        out[m] = {
+            "mean_of_means": float(means_arr.mean()),
+            "std_of_means": float(means_arr.std(ddof=0)),
+            "n_seeds": len(means),
+            "per_seed_means": means,
+        }
+    return out
+
+
+def main():
+    args = parse_args()
+
+    cfg_name = Path(args.config).stem
+    if args.output_dir is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.output_dir = f"results/{cfg_name}_multiseed_{timestamp}"
+
+    out_root = Path(args.output_dir)
+    out_root.mkdir(parents=True, exist_ok=True)
+    print(f"📁 Output root: {out_root}")
+    print(f"🌱 Seeds: {args.seeds}")
+    print(f"⚙️  Config: {args.config}")
+
+    seed_summaries = {}
+    seed_per_fold = {}
+    seed_per_ct = {}
+
+    for seed in args.seeds:
+        seed_dir = out_root / f"seed_{seed}"
+        seed_dir.mkdir(exist_ok=True)
+        save_dir = seed_dir / "checkpoints"
+        log_path = seed_dir / "stdout.log"
+
+        print(f"\n{'='*60}")
+        print(f"  Running seed={seed}")
+        print(f"{'='*60}")
+
+        cmd = [
+            args.python, "train.py",
+            "--config", args.config,
+            "--seed", str(seed),
+            "--save-dir", str(save_dir),
+        ]
+        if args.cv_folds is not None:
+            cmd += ["--cv-folds", str(args.cv_folds)]
+
+        print(f"$ {' '.join(cmd)}")
+
+        with open(log_path, "w", encoding="utf-8") as log_f:
+            proc = subprocess.run(cmd, stdout=log_f, stderr=subprocess.STDOUT, text=True)
+
+        with open(log_path, "r", encoding="utf-8") as f:
+            stdout = f.read()
+
+        if proc.returncode != 0:
+            print(f"❌ Seed {seed} FAILED with returncode={proc.returncode}")
+            print(f"   Log: {log_path}")
+            continue
+
+        cv = parse_cv_summary(stdout)
+        per_fold = parse_per_fold_f1(stdout)
+        per_ct = parse_per_cancer_type(stdout)
+
+        if cv:
+            print(f"✅ Seed {seed} done — F1 macro = {cv.get('f1', {}).get('mean', '?'):.4f}, "
+                  f"F1 weighted = {cv.get('f1_weighted', {}).get('mean', '?'):.4f}")
+            seed_summaries[seed] = cv
+        else:
+            print(f"⚠️  Seed {seed}: không parse được CV summary từ log")
+
+        if per_fold:
+            seed_per_fold[seed] = per_fold
+        if per_ct:
+            seed_per_ct[seed] = per_ct
+
+    # ── Aggregate ─────────────────────────────────────────────
+    aggregated = aggregate_seeds(list(seed_summaries.values()))
+
+    print("\n" + "=" * 60)
+    print("  🎯 MULTI-SEED AGGREGATE")
+    print("=" * 60)
+    for metric, stats in aggregated.items():
+        print(f"  {metric.upper():13s}: {stats['mean_of_means']:.4f} ± {stats['std_of_means']:.4f}  "
+              f"(over {stats['n_seeds']} seeds)")
+
+    summary = {
+        "config": args.config,
+        "seeds": args.seeds,
+        "timestamp": datetime.now().isoformat(),
+        "aggregated": aggregated,
+        "per_seed_cv_summary": {str(k): v for k, v in seed_summaries.items()},
+        "per_seed_per_fold_f1": {str(k): v for k, v in seed_per_fold.items()},
+        "per_seed_per_cancer_type": {str(k): v for k, v in seed_per_ct.items()},
+    }
+
+    summary_path = out_root / "multi_seed_summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+    print(f"\n💾 Summary đã lưu: {summary_path}")
+
+
+if __name__ == "__main__":
+    main()

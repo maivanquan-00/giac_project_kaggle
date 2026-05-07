@@ -29,6 +29,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/config.yaml")
     parser.add_argument("--cv-folds", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Override training.seed in config. Use cho multi-seed runs.")
+    parser.add_argument("--save-dir", type=str, default=None,
+                        help="Override logging.save_dir. Use để tách output từng seed.")
     return parser.parse_args()
  
  
@@ -159,7 +163,17 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
-    model.set_class_weights(compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device))
+
+    # Class weight strategy:
+    #   - Default (use_manual_focal_alpha=false): compute từ class frequency, override
+    #     focal_alpha trong config. Đây là behavior cũ.
+    #   - Manual (use_manual_focal_alpha=true): giữ focal_alpha từ config nguyên vẹn
+    #     để tune thủ công cho minority class (vd: HM-SNV alpha=12).
+    if not cfg["training"].get("use_manual_focal_alpha", False):
+        model.set_class_weights(compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device))
+    else:
+        manual_alpha = cfg["training"]["focal_alpha"]
+        print(f"✨ Using MANUAL focal_alpha from config: {manual_alpha}")
  
     base_wd   = cfg["training"]["weight_decay"]
     emb_wd    = cfg["training"].get("node_emb_weight_decay", base_wd * 5)
@@ -295,9 +309,15 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
  
 def summarize_cv(results):
     print("\n\U0001f4c8 5-fold CV summary")
-    for name in ["accuracy", "precision", "recall", "f1"]:
-        vals = np.array([r["test_metrics"][name] for r in results])
-        print(f"  {name.upper():9s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
+    metric_names = ["accuracy", "precision", "recall", "f1", "f1_weighted"]
+    for name in metric_names:
+        vals = [r["test_metrics"].get(name) for r in results]
+        vals = [v for v in vals if v is not None]
+        if not vals:
+            continue
+        vals = np.array(vals)
+        label = name.upper().replace("F1_WEIGHTED", "F1_WEIGHTED")
+        print(f"  {label:11s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
 
     # Per-cancer-type summary across folds
     all_per_ct = [r.get("per_ct_f1", {}) for r in results]
@@ -315,13 +335,23 @@ def main():
     args = parse_args()
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
-    set_seed(cfg["training"]["seed"])
+
+    # CLI overrides (cho multi-seed runs)
+    if args.seed is not None:
+        cfg["training"]["seed"] = args.seed
+        print(f"\U0001f527 Override seed = {args.seed}")
+    if args.save_dir is not None:
+        cfg["logging"]["save_dir"] = args.save_dir
+        print(f"\U0001f527 Override save_dir = {args.save_dir}")
+
+    seed = cfg["training"]["seed"]
+    set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"\U0001f5a5\ufe0f  Device: {device}")
- 
+    print(f"\U0001f5a5\ufe0f  Device: {device}  |  Seed: {seed}")
+
     cv_folds = args.cv_folds or cfg.get("preprocessing", {}).get("cv_folds", 5)
     if cv_folds and cv_folds > 1:
-        fold_packages = build_cv_datasets(cfg, cfg["training"]["seed"], n_splits=cv_folds)
+        fold_packages = build_cv_datasets(cfg, seed, n_splits=cv_folds)
         results = []
         for fp in fold_packages:
             fn = fp["fold"]
@@ -333,7 +363,7 @@ def main():
             path=os.path.join(cfg["logging"]["save_dir"], "visualizations", "cv_metrics_summary.png"),
             title="5-Fold CV Test Metrics")
     else:
-        datasets, feature_names, dims, metadata = build_datasets(cfg, cfg["training"]["seed"])
+        datasets, feature_names, dims, metadata = build_datasets(cfg, seed)
         print(f"\n\U0001f4d0 Dims: gene={dims['gene']}, meth={dims['meth']}, mirna={dims['mirna']}")
         fit_one_split(cfg, datasets, feature_names, dims, metadata, device, "Single split")
  

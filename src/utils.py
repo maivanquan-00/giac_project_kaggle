@@ -26,12 +26,18 @@ def set_seed(seed: int):
 
 
 def compute_metrics(y_true, y_pred) -> dict:
-    """Tính accuracy, precision, recall, f1 (macro)."""
+    """Tính accuracy, precision, recall, f1 (macro + weighted).
+
+    Primary metric = macro F1 (key 'f1') — conservative cho imbalanced multi-class.
+    Secondary = weighted F1 (key 'f1_weighted') — báo song song để đối chiếu với
+    MoXGATE paper (paper dùng weighted F1, đã confirm bằng reproduction 2026-05-07).
+    """
     return {
-        "accuracy":  accuracy_score(y_true, y_pred),
-        "precision": precision_score(y_true, y_pred, average="macro", zero_division=0),
-        "recall":    recall_score(y_true, y_pred, average="macro", zero_division=0),
-        "f1":        f1_score(y_true, y_pred, average="macro", zero_division=0),
+        "accuracy":     accuracy_score(y_true, y_pred),
+        "precision":    precision_score(y_true, y_pred, average="macro", zero_division=0),
+        "recall":       recall_score(y_true, y_pred, average="macro", zero_division=0),
+        "f1":           f1_score(y_true, y_pred, average="macro", zero_division=0),
+        "f1_weighted":  f1_score(y_true, y_pred, average="weighted", zero_division=0),
     }
 
 
@@ -58,11 +64,13 @@ def compute_per_cancer_type_f1(labels, preds, cancer_types) -> dict:
 
 def print_metrics(metrics: dict, split: str = ""):
     prefix = f"[{split}] " if split else ""
+    f1w = metrics.get("f1_weighted")
+    f1w_str = f"  F1w={f1w:.4f}" if f1w is not None else ""
     print(
         f"{prefix}Acc={metrics['accuracy']:.4f}  "
         f"P={metrics['precision']:.4f}  "
         f"R={metrics['recall']:.4f}  "
-        f"F1={metrics['f1']:.4f}"
+        f"F1={metrics['f1']:.4f}{f1w_str}"
     )
 
 
