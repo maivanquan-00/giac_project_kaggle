@@ -2,7 +2,7 @@ data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_ucec"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
   emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/UCEC_extend"
-#  cancer_types: ["UCEC"]
+  cancer_types: ["UCEC"]
 
 preprocessing:
   gene_top_k:   3500

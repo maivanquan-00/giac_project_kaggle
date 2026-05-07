@@ -116,8 +116,11 @@ def load_aligned_data(cfg: dict) -> dict:
     if filter_cts is not None and "Cancer_Type" in labels.columns:
         ct_series = labels.loc[common_ids, "Cancer_Type"]
         keep_mask = ct_series.isin(filter_cts).values
-        common_ids = common_ids[keep_mask]
-        print(f"  Filter cancer_types={filter_cts}: {len(common_ids)} samples")
+        if keep_mask.sum() == 0:
+            print(f"  ⚠️ Warning: Filter cancer_types={filter_cts} resulted in 0 samples. Skipping filter.")
+        else:
+            common_ids = common_ids[keep_mask]
+            print(f"  Filter cancer_types={filter_cts}: {len(common_ids)} samples")
 
     labels = labels.loc[common_ids]
     gene = gene.loc[common_ids]
