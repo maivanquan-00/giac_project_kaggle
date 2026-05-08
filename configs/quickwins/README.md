@@ -35,6 +35,7 @@ python run_multi_seed.py --config configs/quickwins/gi_07a_focal12.yaml  # +07.A
 | `gi_08a_light_regularization.yaml` | GI | dropout/weight decay/Frobenius giảm đồng thời | Test hypothesis GIAC đang underfit vì over-regularized | Trung bình |
 | `gi_08b_light_reg_focal_smoothing.yaml` | GI | 08.A + manual alpha mean≈1 + smoothing=0.10 | Conservative minority push sau khi giảm regularization | Trung bình |
 | `gi_08c_balanced_sampler_ce.yaml` | GI | balanced sampler + CE + no class weights | Test alternative không dùng focal/class-weight để tránh minority decision quá nhiễu | Trung bình |
+| `stad_08b_light_reg_focal_smoothing.yaml` | STAD-only | GI 08B nhưng `cancer_types=["STAD"]` | Test liệu tách STAD khỏi GI pooled có cải thiện không | Trung bình |
 | `brca_07b_smoothing.yaml` | BRCA | `label_smoothing: 0.10` | Stability cho LumA/Normal | Thấp |
 | `brca_07f_valsize.yaml` | BRCA | `val_size: 0.20` | Val less noisy → best_epoch chính xác → fix Fold-4 | Thấp (mất 5% train data) |
 | `ucec_07c_max_edges.yaml` | UCEC | `max_edges_per_node: 50` | UCEC có hub CpG có thể bị cap=20 | Rất thấp |
@@ -87,6 +88,20 @@ Nếu 08B full vẫn tốt, bước sau mới tạo biến thể rất hẹp qua
 - `gi_08b_alpha_hm25`: giữ 08B, giảm HM alpha `3.20 -> 2.50` để xem HM-SNV noise có giảm không.
 
 Không ưu tiên chạy `gi_07b_smoothing.yaml` một mình nữa, vì screening cho thấy tổ hợp light-reg + manual alpha scale nhỏ + smoothing mới là phần có tín hiệu.
+
+## STAD-only test
+
+Chạy nhanh seed 42 trước:
+
+```bash
+python run_multi_seed.py --config configs/quickwins/stad_08b_light_reg_focal_smoothing.yaml --seeds 42
+```
+
+Nếu seed 42 tốt hơn rõ so với STAD-only cũ (`config_gi_stad_only.yaml` từng khoảng `0.5554`) thì chạy full:
+
+```bash
+python run_multi_seed.py --config configs/quickwins/stad_08b_light_reg_focal_smoothing.yaml --seeds 42 123 2024
+```
 
 ## Combined config
 
