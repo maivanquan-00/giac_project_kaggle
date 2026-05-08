@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 import yaml
+from sklearn.metrics import f1_score
  
 from src.data.dataset import build_cv_datasets, build_datasets
 from src.data.graph_builder import build_hetero_graph
@@ -48,12 +49,17 @@ def _augment_minority(batch, minority_class: int = 3, noise_std: float = 0.10):
     return batch
 
 
-def train_epoch(model, loader, optimizer, graph, device, scheduler=None):
+def train_epoch(model, loader, optimizer, graph, device, scheduler=None, minority_aug_cfg=None):
     model.train()
     total_loss, all_preds, all_labels = 0.0, [], []
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
-        batch = _augment_minority(batch)
+        if minority_aug_cfg and minority_aug_cfg.get("enabled", True):
+            batch = _augment_minority(
+                batch,
+                minority_class=minority_aug_cfg.get("class", 3),
+                noise_std=minority_aug_cfg.get("noise_std", 0.10),
+            )
         optimizer.zero_grad()
         logits, attn_info = model(batch, graph)
         loss = model.compute_loss(logits, batch["label"], attn_info)
@@ -153,6 +159,17 @@ def compute_class_weights(dataset, num_classes, device):
     counts  = np.clip(counts, 1.0, None)
     weights = len(labels) / (num_classes * counts)
     return torch.tensor(weights / weights.mean(), dtype=torch.float32, device=device)
+
+
+def compute_per_class_f1(labels, preds, num_classes):
+    vals = f1_score(
+        labels,
+        preds,
+        labels=np.arange(num_classes),
+        average=None,
+        zero_division=0,
+    )
+    return {int(i): float(v) for i, v in enumerate(vals)}
  
  
 def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_name):
@@ -169,8 +186,14 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     #     focal_alpha trong config. Đây là behavior cũ.
     #   - Manual (use_manual_focal_alpha=true): giữ focal_alpha từ config nguyên vẹn
     #     để tune thủ công cho minority class (vd: HM-SNV alpha=12).
-    if not cfg["training"].get("use_manual_focal_alpha", False):
-        model.set_class_weights(compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device))
+    if not cfg["training"].get("use_class_weights", True):
+        neutral_alpha = torch.ones(cfg["model"]["num_classes"], dtype=torch.float32, device=device)
+        model.set_class_weights(neutral_alpha)
+        print("⚖️  Using neutral class weights / focal_alpha: all ones")
+    elif not cfg["training"].get("use_manual_focal_alpha", False):
+        computed_alpha = compute_class_weights(datasets["train"], cfg["model"]["num_classes"], device)
+        model.set_class_weights(computed_alpha)
+        print(f"⚖️  Using computed focal_alpha: {[round(x, 4) for x in computed_alpha.detach().cpu().tolist()]}")
     else:
         manual_alpha = cfg["training"]["focal_alpha"]
         print(f"✨ Using MANUAL focal_alpha from config: {manual_alpha}")
@@ -224,8 +247,15 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
  
     for epoch in range(1, cfg["training"]["epochs"] + 1):
-        tr = train_epoch(model, train_loader, optimizer, graph, device,
-                         scheduler=scheduler if step_per_batch else None)
+        tr = train_epoch(
+            model,
+            train_loader,
+            optimizer,
+            graph,
+            device,
+            scheduler=scheduler if step_per_batch else None,
+            minority_aug_cfg=cfg["training"].get("minority_augmentation", {"enabled": True}),
+        )
         vl = eval_epoch(model, val_loader, graph, device)
         if not step_per_batch:
             scheduler.step()
@@ -269,6 +299,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
     test_m, test_labels, test_preds = eval_epoch(model, test_loader, graph, device, return_predictions=True)
+    per_class_f1 = compute_per_class_f1(test_labels, test_preds, cfg["model"]["num_classes"])
  
     print(f"\n\U0001f4ca Test - {fold_name}")
     print_metrics(test_m, "Test ")
@@ -283,6 +314,9 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"\n\U0001f4cb Classification Report - {fold_name}")
     print_classification_report(test_labels, test_preds,
                                 class_names=subtype_names[:cfg["model"]["num_classes"]])
+    print(f"\n🎯 Per-class F1 - {fold_name}")
+    for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]]):
+        print(f"   {idx}:{name:<8s}  F1={per_class_f1[idx]:.4f}")
     save_confusion_matrix_csv(test_labels, test_preds,
         path=os.path.join(viz_dir, "confusion_matrix_test_absolute.csv"),
         class_names=subtype_names[:cfg["model"]["num_classes"]])
@@ -304,7 +338,8 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
                 print(f"   {ct:>8}  {info['n']:>5}  {info['f1']:.4f}")
 
     return {"fold": fold_name, "best_val_f1": best_f1, "test_metrics": test_m,
-            "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1}
+            "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1,
+            "per_class_f1": per_class_f1}
  
  
 def summarize_cv(results):
@@ -329,6 +364,19 @@ def summarize_cv(results):
             f1_vals = np.array([d[ct]["f1"] for d in all_per_ct if ct in d])
             n_vals  = np.array([d[ct]["n"]  for d in all_per_ct if ct in d])
             print(f"  {ct:>8}  {n_vals.mean():>6.1f}  {f1_vals.mean():>8.4f}  {f1_vals.std(ddof=0):>7.4f}")
+
+    num_classes = max((max(r.get("per_class_f1", {0: 0}).keys()) for r in results), default=-1) + 1
+    if num_classes > 0:
+        print(f"\n🎯 Per-class F1 (5-fold mean ± std):")
+        print(f"  {'Class':>12}  {'F1 mean':>8}  {'F1 std':>7}")
+        for class_idx in range(num_classes):
+            vals = np.array([
+                r["per_class_f1"][class_idx]
+                for r in results
+                if class_idx in r.get("per_class_f1", {})
+            ])
+            if vals.size:
+                print(f"  {class_idx:>12}  {vals.mean():>8.4f}  {vals.std(ddof=0):>7.4f}")
  
  
 def main():

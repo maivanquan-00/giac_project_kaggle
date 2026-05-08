@@ -97,6 +97,25 @@ def parse_per_cancer_type(stdout: str) -> dict | None:
             for ct, n, m, s in rows}
 
 
+def parse_per_class_f1(stdout: str) -> dict | None:
+    """Extract per-class 5-fold mean ± std từ train.py stdout.
+
+    Format:
+        🎯 Per-class F1 (5-fold mean ± std):
+                 Class   F1 mean   F1 std
+                     0    0.9100   0.0200
+    """
+    section = re.search(
+        r"Per-class F1 \(5-fold mean.*?\):\s*\n.*?Class.*?\n((?:\s+\d+\s+[\d.]+\s+[\d.]+\s*\n?)+)",
+        stdout,
+    )
+    if not section:
+        return None
+    rows = re.findall(r"^\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s*$",
+                      section.group(1), re.MULTILINE)
+    return {cls: {"f1_mean": float(m), "f1_std": float(s)} for cls, m, s in rows}
+
+
 def aggregate_seeds(seed_results: list[dict]) -> dict:
     """Aggregate stats qua nhiều seeds.
 
@@ -141,6 +160,7 @@ def main():
     seed_summaries = {}
     seed_per_fold = {}
     seed_per_ct = {}
+    seed_per_class = {}
 
     for seed in args.seeds:
         seed_dir = out_root / f"seed_{seed}"
@@ -191,6 +211,7 @@ def main():
         cv = parse_cv_summary(stdout)
         per_fold = parse_per_fold_f1(stdout)
         per_ct = parse_per_cancer_type(stdout)
+        per_class = parse_per_class_f1(stdout)
 
         if cv:
             print(f"\n✅ Seed {seed} done — F1 macro = {cv.get('f1', {}).get('mean', 0):.4f}, "
@@ -203,6 +224,8 @@ def main():
             seed_per_fold[seed] = per_fold
         if per_ct:
             seed_per_ct[seed] = per_ct
+        if per_class:
+            seed_per_class[seed] = per_class
 
     # ── Aggregate ─────────────────────────────────────────────
     aggregated = aggregate_seeds(list(seed_summaries.values()))
@@ -285,6 +308,36 @@ def main():
                 print(f"| {ct} | " + " | ".join(row_cells) + f" | {avg:.4f} |")
             print()
 
+    if seed_per_class:
+        class_names = {
+            "0": "CIN",
+            "1": "GS",
+            "2": "MSI",
+            "3": "HM-SNV",
+            "4": "EBV",
+        }
+        all_classes = sorted(set().union(*[d.keys() for d in seed_per_class.values()]), key=int)
+        print("**Per-class F1 (mean across seeds):**")
+        print()
+        seeds_list = list(seed_per_class.keys())
+        header = "| Class | " + " | ".join(f"Seed {s}" for s in seeds_list) + " | Avg |"
+        sep = "|-------|" + "|".join("---" for _ in seeds_list) + "|------|"
+        print(header)
+        print(sep)
+        for cls in all_classes:
+            vals = []
+            row_cells = []
+            for seed in seeds_list:
+                if cls in seed_per_class[seed]:
+                    v = seed_per_class[seed][cls]["f1_mean"]
+                    vals.append(v)
+                    row_cells.append(f"{v:.4f}")
+                else:
+                    row_cells.append("—")
+            avg = np.mean(vals) if vals else 0
+            print(f"| {cls} ({class_names.get(cls, 'class ' + cls)}) | " + " | ".join(row_cells) + f" | {avg:.4f} |")
+        print()
+
     print("---")
     print()
     # ── End paste block ──
@@ -303,6 +356,7 @@ def main():
         "per_seed_cv_summary": {str(k): v for k, v in seed_summaries.items()},
         "per_seed_per_fold_f1": {str(k): v for k, v in seed_per_fold.items()},
         "per_seed_per_cancer_type": {str(k): v for k, v in seed_per_ct.items()},
+        "per_seed_per_class_f1": {str(k): v for k, v in seed_per_class.items()},
     }
     summary_path = out_root / "multi_seed_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:

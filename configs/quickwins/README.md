@@ -32,6 +32,9 @@ python run_multi_seed.py --config configs/quickwins/gi_07a_focal12.yaml  # +07.A
 |------|---------|-------------------------|-------|------|
 | `gi_07a_focal12.yaml` | GI | `focal_alpha=[1,4.5,1.5,12,2]` + `use_manual_focal_alpha=true` | Push HM-SNV recall lên (n=19) | Có thể hại class khác |
 | `gi_07b_smoothing.yaml` | GI | `label_smoothing: 0.10` | Giảm overconfidence → minority recall ↑ | Thấp |
+| `gi_08a_light_regularization.yaml` | GI | dropout/weight decay/Frobenius giảm đồng thời | Test hypothesis GIAC đang underfit vì over-regularized | Trung bình |
+| `gi_08b_light_reg_focal_smoothing.yaml` | GI | 08.A + manual alpha mean≈1 + smoothing=0.10 | Conservative minority push sau khi giảm regularization | Trung bình |
+| `gi_08c_balanced_sampler_ce.yaml` | GI | balanced sampler + CE + no class weights | Test alternative không dùng focal/class-weight để tránh minority decision quá nhiễu | Trung bình |
 | `brca_07b_smoothing.yaml` | BRCA | `label_smoothing: 0.10` | Stability cho LumA/Normal | Thấp |
 | `brca_07f_valsize.yaml` | BRCA | `val_size: 0.20` | Val less noisy → best_epoch chính xác → fix Fold-4 | Thấp (mất 5% train data) |
 | `ucec_07c_max_edges.yaml` | UCEC | `max_edges_per_node: 50` | UCEC có hub CpG có thể bị cap=20 | Rất thấp |
@@ -48,6 +51,20 @@ python run_multi_seed.py --config configs/quickwins/gi_07a_focal12.yaml  # +07.A
 2. **Compare với baseline cùng 3 seeds** — chứ không so với số "best run cũ".
 3. **Quy tắc keep:** ΔF1 macro > +0.005 với std không tăng → KEEP.
 4. **Quy tắc reject:** ΔF1 macro < +0.000 hoặc std tăng > 0.02 → REJECT.
+5. Với GI, đọc thêm bảng **Per-class F1** trong output mới. Một config chỉ đáng giữ nếu macro F1 tăng hoặc nếu HM-SNV/GS tăng rõ mà CIN/MSI không sụp mạnh.
+
+## Thứ tự chạy đề xuất cho GI
+
+Ưu tiên hiện tại là kiểm chứng underfitting trước, vì config gốc đang có dropout và weight decay rất nặng.
+
+```bash
+python run_multi_seed.py --config configs/quickwins/gi_08a_light_regularization.yaml
+python run_multi_seed.py --config configs/quickwins/gi_08b_light_reg_focal_smoothing.yaml
+python run_multi_seed.py --config configs/quickwins/gi_08c_balanced_sampler_ce.yaml
+python run_multi_seed.py --config configs/quickwins/gi_07a_focal12.yaml
+```
+
+Không nên ưu tiên `gi_07b_smoothing.yaml` một mình trước 08.A/08.B, vì file đó chỉ đổi smoothing và vẫn dùng computed alpha theo class frequency trừ khi cấu hình lại.
 
 ## Combined config
 
