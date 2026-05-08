@@ -53,18 +53,40 @@ python run_multi_seed.py --config configs/quickwins/gi_07a_focal12.yaml  # +07.A
 4. **Quy tắc reject:** ΔF1 macro < +0.000 hoặc std tăng > 0.02 → REJECT.
 5. Với GI, đọc thêm bảng **Per-class F1** trong output mới. Một config chỉ đáng giữ nếu macro F1 tăng hoặc nếu HM-SNV/GS tăng rõ mà CIN/MSI không sụp mạnh.
 
-## Thứ tự chạy đề xuất cho GI
+## GI screening đã chạy — không chạy lại
 
-Ưu tiên hiện tại là kiểm chứng underfitting trước, vì config gốc đang có dropout và weight decay rất nặng.
+Các config dưới đây đã chạy **seed 42 × 5-fold** ngày 2026-05-08. Baseline GIAC seed 42 trước đó là **macro F1 ≈ 0.6933**.
+
+| Config | Macro F1 | Weighted F1 | Per-fold macro F1 | Per-class F1 mean `[CIN, GS, MSI, HM, EBV]` | Quyết định |
+|--------|----------|-------------|-------------------|---------------------------------------------|------------|
+| `gi_08b_light_reg_focal_smoothing.yaml` | **0.7199** | **0.8626** | `[0.7783, 0.6986, 0.7254, 0.6835, 0.7136]` | `[0.9137, 0.6669, 0.8508, 0.1833, 0.9846]` | **KEEP — chạy full 3 seeds** |
+| `gi_08a_light_regularization.yaml` | 0.6849 | 0.8501 | `[0.7576, 0.7142, 0.6498, 0.6549, 0.6479]` | `[0.9047, 0.6276, 0.8650, 0.1308, 0.8965]` | REJECT riêng lẻ; 08B giữ phần light-reg |
+| `gi_08c_balanced_sampler_ce.yaml` | 0.6648 | 0.8447 | `[0.6491, 0.6633, 0.6552, 0.6516, 0.7050]` | `[0.8992, 0.6403, 0.8574, 0.0267, 0.9007]` | REJECT — HM-SNV collapse, macro giảm |
+| `gi_07a_focal12.yaml` | 0.6320 | 0.8097 | `[0.5130, 0.8515, 0.5770, 0.6257, 0.5928]` | `[0.8858, 0.5954, 0.7258, 0.1864, 0.7664]` | **REJECT mạnh** — rất unstable, hại MSI/EBV |
+
+Kết luận screening:
+
+- `gi_08b_light_reg_focal_smoothing.yaml` là config duy nhất vượt baseline seed 42 rõ ràng: `+0.0266 macro F1`.
+- `gi_08a` xác nhận giảm regularization có ích một phần, nhưng một mình chưa đủ.
+- `gi_08c` cho thấy balanced sampler + CE không hợp với GIAC trên GI.
+- `gi_07a` chứng minh focal alpha scale lớn `[1,4.5,1.5,12,2]` làm loss mất cân bằng; tránh lặp lại hướng tăng alpha tuyệt đối quá mạnh.
+- Các file output đã lưu ở `configs/quickwins/gi_*_output.md`; không cần chạy lại 4 config này trừ khi code training thay đổi lớn.
+
+## Thứ tự chạy tiếp cho GI
+
+Chạy full multi-seed cho config tốt nhất:
 
 ```bash
-python run_multi_seed.py --config configs/quickwins/gi_08a_light_regularization.yaml
-python run_multi_seed.py --config configs/quickwins/gi_08b_light_reg_focal_smoothing.yaml
-python run_multi_seed.py --config configs/quickwins/gi_08c_balanced_sampler_ce.yaml
-python run_multi_seed.py --config configs/quickwins/gi_07a_focal12.yaml
+python run_multi_seed.py --config configs/quickwins/gi_08b_light_reg_focal_smoothing.yaml --seeds 42 123 2024
 ```
 
-Không nên ưu tiên `gi_07b_smoothing.yaml` một mình trước 08.A/08.B, vì file đó chỉ đổi smoothing và vẫn dùng computed alpha theo class frequency trừ khi cấu hình lại.
+Nếu 08B full vẫn tốt, bước sau mới tạo biến thể rất hẹp quanh 08B, ví dụ:
+
+- `gi_08b_gamma15`: giữ 08B, đổi `focal_gamma: 2.0 -> 1.5`.
+- `gi_08b_no_smoothing`: giữ 08B, đổi `label_smoothing: 0.10 -> 0.05`.
+- `gi_08b_alpha_hm25`: giữ 08B, giảm HM alpha `3.20 -> 2.50` để xem HM-SNV noise có giảm không.
+
+Không ưu tiên chạy `gi_07b_smoothing.yaml` một mình nữa, vì screening cho thấy tổ hợp light-reg + manual alpha scale nhỏ + smoothing mới là phần có tín hiệu.
 
 ## Combined config
 

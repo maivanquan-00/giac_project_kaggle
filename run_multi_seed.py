@@ -105,14 +105,16 @@ def parse_per_class_f1(stdout: str) -> dict | None:
                  Class   F1 mean   F1 std
                      0    0.9100   0.0200
     """
-    section = re.search(
-        r"Per-class F1 \(5-fold mean.*?\):\s*\n.*?Class.*?\n((?:\s+\d+\s+[\d.]+\s+[\d.]+\s*\n?)+)",
-        stdout,
-    )
-    if not section:
+    marker = "Per-class F1 (5-fold mean"
+    marker_pos = stdout.rfind(marker)
+    if marker_pos < 0:
         return None
-    rows = re.findall(r"^\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s*$",
-                      section.group(1), re.MULTILINE)
+    section = stdout[marker_pos:]
+    rows = re.findall(
+        r"^\s+(\d+)\s+([0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)\s*$",
+        section,
+        re.MULTILINE,
+    )
     return {cls: {"f1_mean": float(m), "f1_std": float(s)} for cls, m, s in rows}
 
 
