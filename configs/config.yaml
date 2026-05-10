@@ -4,8 +4,8 @@ data:
   cancer_types: ["COAD", "ESCA", "READ", "STAD"]
 
 preprocessing:
-  gene_top_k:   3500
-  meth_top_k:   3500
+  gene_top_k:   2500      # Stage 2A: giảm từ 3500 (chống overfit + giảm noise input)
+  meth_top_k:   2500      # Stage 2A: giảm từ 3500
   mirna_top_k:  null      # null = dùng tất cả miRNA sau low-expression filter (~593)
   feature_selection_method: "anova"
   val_size:  0.15
@@ -49,14 +49,14 @@ training:
   onecycle_pct_start:        0.1
   onecycle_div_factor:       10.0
   onecycle_final_div_factor: 100.0
-  weight_decay:          3.0e-3
+  weight_decay:          5.0e-3   # Stage 2A: tăng từ 3e-3 (chống overfit train F1=0.93)
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
   focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
   label_smoothing: 0.05
   balanced_sampler: false
-  lambda_frobenius: 0.001
-  patience: 20
+  lambda_frobenius: 0.002          # Stage 2A: tăng từ 0.001 (bù W_out không bị reg)
+  patience: 15                     # Stage 2A: giảm từ 20 (stop overfit sớm hơn)
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"

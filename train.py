@@ -349,9 +349,18 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             for ct, info in sorted(per_ct_f1.items()):
                 print(f"   {ct:>8}  {info['n']:>5}  {info['f1']:.4f}")
 
+    # Train F1 at the epoch of best val F1 — overfit indicator
+    train_f1_at_best = None
+    if history["val_f1"]:
+        best_idx = int(np.argmax(history["val_f1"]))
+        train_f1_at_best = history["train_f1"][best_idx]
+
     return {"fold": fold_name, "best_val_f1": best_f1, "test_metrics": test_m,
             "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1,
-            "per_class_f1": per_class_f1}
+            "per_class_f1": per_class_f1, "attn": attn,
+            "best_val_loss": best_loss, "stop_epoch": epoch,
+            "n_params": n_params, "dims": dims,
+            "train_f1_at_best_val": train_f1_at_best}
  
  
 def summarize_cv(results):
@@ -389,6 +398,46 @@ def summarize_cv(results):
             ])
             if vals.size:
                 print(f"  {class_idx:>12}  {vals.mean():>8.4f}  {vals.std(ddof=0):>7.4f}")
+
+    # ── Attention stats summary (5-fold mean ± std) ─────────────────
+    attn_list = [r.get("attn", {}) for r in results if r.get("attn")]
+    if attn_list:
+        print(f"\n🔍 Attention Stats (5-fold mean ± std):")
+        attn_keys = [
+            "cpg_std", "cpg_max", "cpg_nnz", "modality_w_cpg",
+            "mirna_std", "mirna_max", "mirna_nnz", "modality_w_mirna",
+        ]
+        for k in attn_keys:
+            vals = np.array([a[k] for a in attn_list if k in a])
+            if vals.size:
+                print(f"  {k:18s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
+
+    # ── Model size & feature counts (5-fold mean) ───────────────────
+    n_params_list = [r.get("n_params") for r in results if r.get("n_params")]
+    dims_list = [r.get("dims") for r in results if r.get("dims")]
+    if n_params_list and dims_list:
+        print(f"\n📐 Model & Features (5-fold mean):")
+        print(f"  Params       : {int(np.mean(n_params_list)):,}")
+        print(f"  Gene feats   : {int(np.mean([d['gene'] for d in dims_list])):,}")
+        print(f"  Meth feats   : {int(np.mean([d['meth'] for d in dims_list])):,}")
+        print(f"  miRNA feats  : {int(np.mean([d['mirna'] for d in dims_list])):,}")
+
+    # ── Overfit indicator: Train vs Val vs Test ────────────────────
+    train_f1s = [r.get("train_f1_at_best_val") for r in results if r.get("train_f1_at_best_val") is not None]
+    best_val_f1s = [r.get("best_val_f1") for r in results if r.get("best_val_f1") is not None]
+    test_f1s = [r["test_metrics"].get("f1") for r in results if r.get("test_metrics")]
+    stop_epochs = [r.get("stop_epoch") for r in results if r.get("stop_epoch") is not None]
+    if train_f1s and best_val_f1s and test_f1s:
+        tf = np.array(train_f1s); bv = np.array(best_val_f1s); te = np.array(test_f1s)
+        print(f"\n⚖️  Overfit indicator (5-fold):")
+        print(f"  Train F1 (at best val) : mean={tf.mean():.4f}  std={tf.std(ddof=0):.4f}")
+        print(f"  Best  Val F1           : mean={bv.mean():.4f}  std={bv.std(ddof=0):.4f}")
+        print(f"  Test  F1               : mean={te.mean():.4f}  std={te.std(ddof=0):.4f}")
+        print(f"  Train−Val gap          : mean={(tf-bv).mean():+.4f}  (gap > 0.20 → strong overfit)")
+        print(f"  Val−Test gap           : mean={(bv-te).mean():+.4f}  (gap > 0.05 → val không đại diện)")
+        if stop_epochs:
+            se = np.array(stop_epochs)
+            print(f"  Stop epoch             : mean={se.mean():.1f}  range=[{se.min()},{se.max()}]")
  
  
 def main():

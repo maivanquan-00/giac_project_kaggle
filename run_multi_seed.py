@@ -97,6 +97,85 @@ def parse_per_cancer_type(stdout: str) -> dict | None:
             for ct, n, m, s in rows}
 
 
+def parse_model_features(stdout: str) -> dict | None:
+    """Extract '📐 Model & Features (5-fold mean)' block.
+
+    Format:
+        📐 Model & Features (5-fold mean):
+          Params       : 750,000
+          Gene feats   : 2,612
+          Meth feats   : 2,742
+          miRNA feats  : 588
+    """
+    marker = "Model & Features"
+    pos = stdout.rfind(marker)
+    if pos < 0:
+        return None
+    section = stdout[pos:pos + 600]
+    out = {}
+    for key, label in [("params", "Params"), ("gene", "Gene feats"),
+                       ("meth", "Meth feats"), ("mirna", "miRNA feats")]:
+        m = re.search(rf"{label}\s*:\s*([\d,]+)", section)
+        if m:
+            out[key] = int(m.group(1).replace(",", ""))
+    return out if out else None
+
+
+def parse_attention_stats(stdout: str) -> dict | None:
+    """Extract '🔍 Attention Stats (5-fold mean ± std)' block từ summarize_cv.
+
+    Format:
+        🔍 Attention Stats (5-fold mean ± std):
+          cpg_std           : mean=0.0488  std=0.0061
+          cpg_max           : mean=0.2266  std=0.0285
+          ...
+    """
+    marker = "Attention Stats (5-fold mean"
+    pos = stdout.rfind(marker)
+    if pos < 0:
+        return None
+    section = stdout[pos:pos + 1500]
+    rows = re.findall(
+        r"^\s+([\w_]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)\s*$",
+        section, re.MULTILINE,
+    )
+    return {name: {"mean": float(m), "std": float(s)} for name, m, s in rows}
+
+
+def parse_overfit_indicator(stdout: str) -> dict | None:
+    """Extract '⚖️ Overfit indicator (5-fold)' block.
+
+    Format:
+        ⚖️  Overfit indicator (5-fold):
+          Best Val F1   : mean=0.7499  std=0.0532
+          Test  F1      : mean=0.6594  std=0.0154
+          Val−Test gap  : mean=+0.0905  (gap > 0.05 → overfit nghi ngờ)
+          Stop epoch    : mean=78.4  range=[60,96]
+    """
+    marker = "Overfit indicator"
+    pos = stdout.rfind(marker)
+    if pos < 0:
+        return None
+    section = stdout[pos:pos + 800]
+    out = {}
+    m = re.search(r"Best Val F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+    if m:
+        out["best_val_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
+    m = re.search(r"Test\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+    if m:
+        out["test_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
+    m = re.search(r"Val.Test gap\s*:\s*mean=([+\-\d.]+)", section)
+    if m:
+        out["val_test_gap"] = float(m.group(1))
+    m = re.search(r"Stop epoch\s*:\s*mean=([\d.]+)\s+range=\[(\d+),(\d+)\]", section)
+    if m:
+        out["stop_epoch"] = {
+            "mean": float(m.group(1)),
+            "min": int(m.group(2)), "max": int(m.group(3)),
+        }
+    return out if out else None
+
+
 def parse_per_class_f1(stdout: str) -> dict | None:
     """Extract per-class 5-fold mean ± std từ train.py stdout.
 
@@ -163,6 +242,9 @@ def main():
     seed_per_fold = {}
     seed_per_ct = {}
     seed_per_class = {}
+    seed_attn = {}
+    seed_overfit = {}
+    seed_modelft = {}
 
     for seed in args.seeds:
         seed_dir = out_root / f"seed_{seed}"
@@ -214,6 +296,9 @@ def main():
         per_fold = parse_per_fold_f1(stdout)
         per_ct = parse_per_cancer_type(stdout)
         per_class = parse_per_class_f1(stdout)
+        attn = parse_attention_stats(stdout)
+        overfit = parse_overfit_indicator(stdout)
+        modelft = parse_model_features(stdout)
 
         if cv:
             print(f"\n✅ Seed {seed} done — F1 macro = {cv.get('f1', {}).get('mean', 0):.4f}, "
@@ -228,6 +313,12 @@ def main():
             seed_per_ct[seed] = per_ct
         if per_class:
             seed_per_class[seed] = per_class
+        if attn:
+            seed_attn[seed] = attn
+        if overfit:
+            seed_overfit[seed] = overfit
+        if modelft:
+            seed_modelft[seed] = modelft
 
     # ── Aggregate ─────────────────────────────────────────────
     aggregated = aggregate_seeds(list(seed_summaries.values()))
@@ -340,6 +431,64 @@ def main():
             print(f"| {cls} ({class_names.get(cls, 'class ' + cls)}) | " + " | ".join(row_cells) + f" | {avg:.4f} |")
         print()
 
+    # ── Attention stats (mean ± std across seeds) ──────────────────
+    if seed_attn:
+        print("**Attention stats (mean across folds, then averaged across seeds):**")
+        print()
+        print("| Modality | std | max | nnz | global w |")
+        print("|---|---|---|---|---|")
+        for mod in ["cpg", "mirna"]:
+            row = [mod]
+            for stat in ["std", "max", "nnz"]:
+                key = f"{mod}_{stat}"
+                vals = [seed_attn[s][key]["mean"] for s in seed_attn if key in seed_attn[s]]
+                row.append(f"{np.mean(vals):.3f}" if vals else "—")
+            gkey = f"modality_w_{mod}"
+            gvals = [seed_attn[s][gkey]["mean"] for s in seed_attn if gkey in seed_attn[s]]
+            row.append(f"{np.mean(gvals):.3f}" if gvals else "—")
+            print("| " + " | ".join(row) + " |")
+        print()
+
+    # ── Overfit indicator (Train vs Val vs Test) ───────────────────
+    if seed_overfit:
+        print("**Overfit indicator (mean across seeds):**")
+        print()
+        print("| Metric | Value | Note |")
+        print("|---|---|---|")
+        keys = [
+            ("best_val_f1", "Best Val F1", ""),
+            ("test_f1",     "Test F1",     ""),
+        ]
+        for k, label, note in keys:
+            vals = [seed_overfit[s][k]["mean"] for s in seed_overfit if k in seed_overfit[s]]
+            if vals:
+                print(f"| {label} | {np.mean(vals):.4f} | {note} |")
+        gaps = [seed_overfit[s].get("val_test_gap", 0.0) for s in seed_overfit
+                if "val_test_gap" in seed_overfit[s]]
+        if gaps:
+            avg_gap = np.mean(gaps)
+            note = "OK" if abs(avg_gap) < 0.05 else "⚠️ val không đại diện test"
+            print(f"| Val−Test gap | {avg_gap:+.4f} | {note} |")
+        stops = [seed_overfit[s]["stop_epoch"]["mean"] for s in seed_overfit
+                 if "stop_epoch" in seed_overfit[s]]
+        if stops:
+            print(f"| Stop epoch (mean) | {np.mean(stops):.1f} | sớm = overfit nghi ngờ |")
+        print()
+
+    # ── Model & feature counts ──────────────────────────────────────
+    if seed_modelft:
+        # Same across seeds typically; use first
+        first = next(iter(seed_modelft.values()))
+        print("**Model & features:**")
+        print()
+        parts = []
+        if "params" in first:  parts.append(f"params={first['params']:,}")
+        if "gene"   in first:  parts.append(f"gene={first['gene']}")
+        if "meth"   in first:  parts.append(f"meth={first['meth']}")
+        if "mirna"  in first:  parts.append(f"mirna={first['mirna']}")
+        print("- " + "  ·  ".join(parts))
+        print()
+
     print("---")
     print()
     # ── End paste block ──
@@ -359,6 +508,9 @@ def main():
         "per_seed_per_fold_f1": {str(k): v for k, v in seed_per_fold.items()},
         "per_seed_per_cancer_type": {str(k): v for k, v in seed_per_ct.items()},
         "per_seed_per_class_f1": {str(k): v for k, v in seed_per_class.items()},
+        "per_seed_attention": {str(k): v for k, v in seed_attn.items()},
+        "per_seed_overfit": {str(k): v for k, v in seed_overfit.items()},
+        "per_seed_model_features": {str(k): v for k, v in seed_modelft.items()},
     }
     summary_path = out_root / "multi_seed_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:

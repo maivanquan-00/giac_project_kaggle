@@ -44,10 +44,10 @@ class ModalityCrossAttention(nn.Module):
         self.modality_logits = nn.Parameter(torch.zeros(2))
 
         # Learnable log-temperature for attention sharpening.
-        # Init = 0.0 → temp = exp(0) = 1.0 (scale chuẩn).
-        # Để model tự học mức sharpness phù hợp từ data thay vì ép sparse từ epoch 1.
-        # (Comment cũ ghi "init ~2.0" KHÔNG khớp code — đã đính chính 2026-05-10.)
-        self.log_temp = nn.Parameter(torch.tensor(0.0))
+        # Init = 0.69 → temp = exp(0.69) ≈ 2.0 — sharpen scores ngay từ epoch 1.
+        # Stage 2A 2026-05-11: trước đây init=0 → entmax15 nnz~0.95 (gần softmax),
+        # không tận dụng được sparsity. Init temp=2 force sparse thực sự.
+        self.log_temp = nn.Parameter(torch.tensor(0.69))
 
     @property
     def modality_weights(self):
