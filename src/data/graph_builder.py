@@ -447,10 +447,8 @@ def _find_col(columns: list, candidates: list) -> str | None:
  
  
 def _self_loop_edges(n_src: int, n_dst: int, n: int = 500) -> torch.Tensor:
-    rng = np.random.default_rng(0)
-    src = rng.integers(0, n_src, n)
-    dst = rng.integers(0, n_dst, n)
-    return torch.tensor([src.tolist(), dst.tolist()], dtype=torch.long)
+    """Empty edge_index fallback when emQTL miss — KHÔNG sinh edges ngẫu nhiên."""
+    return torch.zeros((2, 0), dtype=torch.long)
  
  
 def _identity_edges(n_nodes: int) -> torch.Tensor:

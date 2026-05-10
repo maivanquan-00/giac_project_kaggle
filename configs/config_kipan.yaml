@@ -7,7 +7,7 @@ data:
 preprocessing:
   gene_top_k:   3500
   meth_top_k:   3500
-  mirna_top_k:  1881
+  mirna_top_k:  null      # null = dùng tất cả miRNA sau low-expression filter (~593)
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
@@ -62,6 +62,10 @@ training:
   seed: 42
   loss_name: "focal"
   subtype_names: ["KICH", "KIRC", "KIRP"]
+  minority_augmentation:
+    enabled: true
+    class: 0           # KICH=0 — minority chính của KIPAN (~9%)
+    noise_std: 0.10
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"

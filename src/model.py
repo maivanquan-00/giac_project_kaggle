@@ -44,10 +44,9 @@ class ModalityCrossAttention(nn.Module):
         self.modality_logits = nn.Parameter(torch.zeros(2))
 
         # Learnable log-temperature for attention sharpening.
-        # Initialized to 0.0 → temp = 1.0 (standard scale).
-        # Positional encoding already differentiates the K tokens; starting
-        # at temp=1.0 lets the model learn the right sharpness from data
-        # rather than forcing aggressive sparsity from epoch 1.
+        # Init = 0.0 → temp = exp(0) = 1.0 (scale chuẩn).
+        # Để model tự học mức sharpness phù hợp từ data thay vì ép sparse từ epoch 1.
+        # (Comment cũ ghi "init ~2.0" KHÔNG khớp code — đã đính chính 2026-05-10.)
         self.log_temp = nn.Parameter(torch.tensor(0.0))
 
     @property
@@ -72,6 +71,7 @@ class ModalityCrossAttention(nn.Module):
         # Attention scores (B, n_heads, 1, K) → sparse weights over K nodes
         # Multiply by exp(log_temp) to sharpen/flatten the distribution;
         # initialized to ~2.0 so entmax15 receives amplified score differences.
+        # Multiply by exp(log_temp) để model học sharpness; init log_temp=0 → factor=1.
         scores = torch.matmul(Q, K_.transpose(-2, -1)) * self.scale * self.log_temp.exp()
         if self.alpha == 1.0:
             attn = F.softmax(scores, dim=-1)

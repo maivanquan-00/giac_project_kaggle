@@ -37,12 +37,21 @@ def parse_args():
     return parser.parse_args()
  
  
-def _augment_minority(batch, minority_class: int = 3, noise_std: float = 0.10):
-    """Add Gaussian noise to HM-SNV samples each training step.
-    Forces the model to generalize instead of memorising the ~15 unique
-    HM-SNV training patients; features are already z-scored so std=0.10
-    is a mild perturbation (~10 % of one standard deviation)."""
-    mask = batch["label"] == minority_class
+def _augment_minority(batch, minority_class=None, noise_std: float = 0.10):
+    """Add Gaussian noise vào sample của minority class(es) mỗi training step.
+
+    `minority_class` có thể là int (1 class) hoặc list/tuple (nhiều classes).
+    Nếu None → no-op. Trước đây hardcoded default=3 (HM-SNV) — sai cho BRCA
+    (Normal=4), đã fix 2026-05-10: bắt buộc đọc từ config.
+    """
+    if minority_class is None:
+        return batch
+    classes = [minority_class] if isinstance(minority_class, int) else list(minority_class)
+    if not classes:
+        return batch
+    mask = torch.zeros_like(batch["label"], dtype=torch.bool)
+    for c in classes:
+        mask = mask | (batch["label"] == c)
     if mask.any():
         for key in ("gene", "meth", "mirna"):
             batch[key][mask] = batch[key][mask] + torch.randn_like(batch[key][mask]) * noise_std
@@ -55,9 +64,12 @@ def train_epoch(model, loader, optimizer, graph, device, scheduler=None, minorit
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
         if minority_aug_cfg and minority_aug_cfg.get("enabled", True):
+            # `class` default = None → no-op (an toàn). Bắt buộc set ở config
+            # nếu muốn aug. Trước đây hardcode default=3 → sai cho BRCA Normal=4.
+            cls = minority_aug_cfg.get("class", None)
             batch = _augment_minority(
                 batch,
-                minority_class=minority_aug_cfg.get("class", 3),
+                minority_class=cls,
                 noise_std=minority_aug_cfg.get("noise_std", 0.10),
             )
         optimizer.zero_grad()

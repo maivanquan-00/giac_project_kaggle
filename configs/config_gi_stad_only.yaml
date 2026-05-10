@@ -1,7 +1,5 @@
-# Issue 01 — 5.2: STAD-only ablation
-# Mục đích: kiểm chứng H2 — khi loại bỏ multi-cancer heterogeneity,
-# GIAC có đạt F1 tương đương BRCA/UCEC (~0.75+) không?
-# Kỳ vọng: nếu yes → vấn đề GI là dữ liệu (heterogeneity), không phải kiến trúc.
+# STAD-only ablation: isolate multi-cancer heterogeneity confound
+# Khi loại COAD/READ/ESCA, GIAC có đạt F1 cao hơn GI gộp không?
 
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
@@ -11,7 +9,7 @@ data:
 preprocessing:
   gene_top_k:   3500
   meth_top_k:   3500
-  mirna_top_k:  1881
+  mirna_top_k:  null      # null = dùng tất cả miRNA sau low-expression filter (~593)
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
@@ -66,6 +64,10 @@ training:
   seed: 42
   loss_name: "focal"
   subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
+  minority_augmentation:
+    enabled: true
+    class: [3]         # HM-SNV=3 (~7 sample trong STAD-only, rất hiếm)
+    noise_std: 0.10
 
 logging:
   save_dir:     "/kaggle/working/checkpoints_gi_stad_only/"

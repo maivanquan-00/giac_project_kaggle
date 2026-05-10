@@ -31,7 +31,7 @@ from torch.utils.data import Dataset
 DEFAULT_PREPROCESS_CFG = {
     "gene_top_k": 4000,
     "meth_top_k": 4000,
-    "mirna_top_k": 1881,
+    "mirna_top_k": None,   # None = dùng tất cả miRNA sau low-expression filter (~593)
     "val_size": 0.1,
     "cv_folds": 5,
     # Extra features selected for minority classes (GS=class1, HM-SNV=class3)
@@ -92,14 +92,14 @@ def load_aligned_data(cfg: dict) -> dict:
     print("📂 Loading data từ:", root)
 
     labels = pd.read_csv(os.path.join(root, "final_labels.csv"), index_col=0)
-    gene_path = _resolve_existing_path(
-        root,
-        ["final_gene_symbol.csv", "final_gene.csv"],
-        asset_name="gene matrix",
-    )
-    gene = pd.read_csv(gene_path, index_col=0)
+    gene = pd.read_csv(os.path.join(root, "final_gene.csv"), index_col=0)
     meth = pd.read_csv(os.path.join(root, "final_methylation.csv"), index_col=0)
     mirna = pd.read_csv(os.path.join(root, "final_mirna.csv"), index_col=0)
+
+    # Sanity check: gene cols phải là symbol (TP53, BRCA1...), không phải Ensembl
+    if any(c.startswith("ENSG") for c in gene.columns[:5]):
+        print("  ⚠️  final_gene.csv vẫn dùng Ensembl ID — graph PPI/Reactome sẽ rỗng.")
+        print("      Re-run preprocess với --hgnc_path để map sang gene symbol.")
 
     print(f"  Labels : {labels.shape}")
     print(f"  Gene   : {gene.shape}")
@@ -343,17 +343,6 @@ def _get_preprocess_cfg(cfg: dict) -> dict:
     preprocess_cfg = dict(DEFAULT_PREPROCESS_CFG)
     preprocess_cfg.update(cfg.get("preprocessing", {}))
     return preprocess_cfg
-
-
-def _resolve_existing_path(root: str, candidates: List[str], asset_name: str) -> str:
-    for name in candidates:
-        path = os.path.join(root, name)
-        if os.path.exists(path):
-            return path
-    tried = ", ".join(candidates)
-    raise FileNotFoundError(
-        f"Không tìm thấy {asset_name} trong {root}. Đã thử: {tried}"
-    )
 
 
 class OmicDataset(Dataset):

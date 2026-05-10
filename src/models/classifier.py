@@ -128,15 +128,22 @@ def modality_regularization_loss(
 def frobenius_regularization_loss(
     model: nn.Module,
     lambda2: float,
-    param_prefix: str = "W_",  # chỉ regularize các weight matrix
+    param_prefix: str = "W_",  # legacy arg — bị OVERRIDE bởi `targets` bên dưới
+    targets: tuple = ("W_q", "W_k_", "W_v_"),
 ) -> torch.Tensor:
     """
-    L_reg2 = lambda2 * ||W_c||_F^2
-    Frobenius norm regularization trên weight matrices của cross-attention.
+    L_reg2 = lambda2 * Σ ||W||_F^2  trên các Q/K/V projections của cross-attention.
+
+    KHÔNG regularize `W_out` (fusion projection) — siết W_out sẽ làm fusion mềm
+    và là nguyên nhân nghi ngờ làm CpG/miRNA context không truyền tải đủ qua
+    residual với z_gene. Đây là bug đã fix 2026-05-10.
     """
+    del param_prefix  # giữ chữ ký API cũ, không dùng
     reg = None
     for name, param in model.named_parameters():
-        if param_prefix in name and param.requires_grad:
+        if not param.requires_grad:
+            continue
+        if any(t in name for t in targets):
             term = param.norm("fro") ** 2
             reg = term if reg is None else reg + term
     if reg is None:
