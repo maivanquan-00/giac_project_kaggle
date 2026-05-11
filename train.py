@@ -184,7 +184,11 @@ def compute_class_weights(dataset, num_classes, device):
     counts  = np.bincount(labels, minlength=num_classes).astype(np.float32)
     counts  = np.clip(counts, 1.0, None)
     weights = len(labels) / (num_classes * counts)
-    return torch.tensor(weights / weights.mean(), dtype=torch.float32, device=device)
+    weights = weights / weights.mean()
+    # Floor prevents majority class (CIN ~624) from having near-zero weight (~0.075),
+    # which causes under-penalisation of CIN→GS false positives.
+    weights = np.clip(weights, 0.3, None)
+    return torch.tensor(weights, dtype=torch.float32, device=device)
 
 
 def compute_per_class_f1(labels, preds, num_classes):
