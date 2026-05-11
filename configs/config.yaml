@@ -42,7 +42,7 @@ model:
 
 training:
   epochs:      150
-  batch_size:  32
+  batch_size:  64
   learning_rate:     1.0e-4
   max_learning_rate: 5.0e-4
   scheduler: "onecycle"
@@ -60,8 +60,6 @@ training:
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
-  lambda_supcon:      0.10   # Stage 3: SupCon auxiliary loss (0 = disabled)
-  supcon_temperature: 0.07
   subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
   minority_augmentation:
     enabled: true
