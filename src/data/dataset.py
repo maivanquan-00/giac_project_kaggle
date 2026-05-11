@@ -135,6 +135,23 @@ def load_aligned_data(cfg: dict) -> dict:
         unique_cts, ct_counts = np.unique(cancer_types, return_counts=True)
         print(f"  Phân bố cancer_type: {dict(zip(unique_cts, ct_counts))}")
 
+    # Exclude subtypes that are too rare for reliable classification (e.g. HM-SNV n=19)
+    exclude_subtypes = cfg.get("data", {}).get("exclude_subtypes", [])
+    if exclude_subtypes:
+        keep = ~np.isin(y, exclude_subtypes)
+        labels = labels.iloc[keep]
+        gene = gene.iloc[keep]
+        meth = meth.iloc[keep]
+        mirna = mirna.iloc[keep]
+        cancer_types = cancer_types[keep] if cancer_types is not None else None
+        y = labels["Target_Label"].values.astype(np.int64)
+        # Remap to contiguous [0, n_classes-1]
+        unique_y = sorted(np.unique(y).tolist())
+        label_remap = {old: new for new, old in enumerate(unique_y)}
+        y = np.array([label_remap[l] for l in y], dtype=np.int64)
+        print(f"  Excluded subtypes {exclude_subtypes} → {keep.sum()} samples, label remap: {label_remap}")
+        print(f"  Phân bố sau exclude: {dict(zip(*np.unique(y, return_counts=True)))}")
+
     return {
         "patient_ids": common_ids.to_numpy(),
         "cancer_types": cancer_types,
