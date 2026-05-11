@@ -113,6 +113,54 @@ class SubtypeClassifier(nn.Module):
 # ─────────────────────────────────────────────
 #  Regularization losses (như MoXGATE eq. 14)
 # ─────────────────────────────────────────────
+class SupConLoss(nn.Module):
+    """Supervised Contrastive Loss (Khosla et al. 2020).
+
+    Pull same-class embeddings closer, push different-class apart.
+    Helps separate GS from CIN without touching class weights or loss balance.
+
+    temperature=0.07 (standard); use higher (0.10–0.15) if training is unstable.
+    """
+
+    def __init__(self, temperature: float = 0.07):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, features: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """
+        features : (B, H) — embeddings, L2-normalized internally
+        labels   : (B,) — class indices
+        Returns scalar loss. Anchors without a positive pair in the batch are skipped.
+        """
+        device = features.device
+        B = features.shape[0]
+
+        z = F.normalize(features, dim=1)
+        sim = torch.matmul(z, z.T) / self.temperature  # (B, B)
+
+        mask_self = torch.eye(B, dtype=torch.bool, device=device)
+        mask_pos = (labels.unsqueeze(0) == labels.unsqueeze(1)) & ~mask_self  # (B, B)
+        n_pos = mask_pos.float().sum(dim=1)  # (B,)
+        valid = n_pos > 0
+
+        if not valid.any():
+            return features.new_tensor(0.0)
+
+        # Numerical stability
+        sim = sim - sim.max(dim=1, keepdim=True).values.detach()
+
+        # log denominator: sum over all non-self pairs
+        log_denom = torch.log(
+            (torch.exp(sim) * ~mask_self).sum(dim=1).clamp_min(1e-8)
+        )
+
+        # Mean log-prob over positives per anchor
+        pos_sim_sum = (sim * mask_pos.float()).sum(dim=1)
+        per_anchor = pos_sim_sum / n_pos.clamp_min(1) - log_denom  # (B,)
+
+        return -per_anchor[valid].mean()
+
+
 def modality_regularization_loss(
     modality_weights: torch.Tensor,  # (3,) — output từ SparseAttention.modality_weights
     lambda1: float,

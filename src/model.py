@@ -5,7 +5,7 @@ from torch_geometric.data import HeteroData
 from entmax import entmax15
 
 from src.models.gat_encoder import MultiOmicGATModule
-from src.models.classifier import FocalLoss, SubtypeClassifier, frobenius_regularization_loss
+from src.models.classifier import FocalLoss, SubtypeClassifier, SupConLoss, frobenius_regularization_loss
 
 
 class ModalityCrossAttention(nn.Module):
@@ -140,14 +140,19 @@ class GIACModel(nn.Module):
             num_classes     = num_classes,
             label_smoothing = cfg_train.get("label_smoothing", 0.0),
         )
-        self.lambda_frob = cfg_train.get("lambda_frobenius", 0.01)
+        self.lambda_frob   = cfg_train.get("lambda_frobenius", 0.01)
+        self.lambda_supcon = cfg_train.get("lambda_supcon", 0.0)
+        if self.lambda_supcon > 0.0:
+            self.supcon_loss = SupConLoss(
+                temperature=cfg_train.get("supcon_temperature", 0.07)
+            )
 
     def set_class_weights(self, w):
         norm = w / w.mean().clamp_min(1e-8)
         self.class_weights.copy_(norm.to(self.class_weights.device))
         self.focal_loss.set_alpha(self.class_weights)
 
-    def forward(self, batch, graph, return_interpretability=False):
+    def forward(self, batch, graph, return_interpretability=False, return_embeddings=False):
         z_gene, z_cpg_seq, z_mirna_seq = self.gat(batch, graph)
         fused, attn_info = self.cross_attn(
             z_gene, z_cpg_seq, z_mirna_seq, return_attn=True
@@ -156,9 +161,11 @@ class GIACModel(nn.Module):
 
         if return_interpretability:
             return logits, None, attn_info
+        if return_embeddings:
+            return logits, fused, attn_info
         return logits, attn_info
 
-    def compute_loss(self, logits, labels, attn_info=None):
+    def compute_loss(self, logits, labels, attn_info=None, embeddings=None):
         if self.loss_name == "cross_entropy":
             loss_cls = F.cross_entropy(logits, labels, weight=self.class_weights)
         else:
@@ -166,4 +173,7 @@ class GIACModel(nn.Module):
         loss_frob = frobenius_regularization_loss(
             self.cross_attn, self.lambda_frob, param_prefix="W_"
         )
-        return loss_cls + loss_frob
+        loss = loss_cls + loss_frob
+        if embeddings is not None and self.lambda_supcon > 0.0:
+            loss = loss + self.lambda_supcon * self.supcon_loss(embeddings, labels)
+        return loss

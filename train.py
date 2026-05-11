@@ -74,8 +74,12 @@ def train_epoch(model, loader, optimizer, graph, device, scheduler=None, minorit
                 noise_std=minority_aug_cfg.get("noise_std", 0.10),
             )
         optimizer.zero_grad()
-        logits, attn_info = model(batch, graph)
-        loss = model.compute_loss(logits, batch["label"], attn_info)
+        if getattr(model, "lambda_supcon", 0.0) > 0.0:
+            logits, embeddings, attn_info = model(batch, graph, return_embeddings=True)
+            loss = model.compute_loss(logits, batch["label"], attn_info, embeddings=embeddings)
+        else:
+            logits, attn_info = model(batch, graph)
+            loss = model.compute_loss(logits, batch["label"], attn_info)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
@@ -184,11 +188,7 @@ def compute_class_weights(dataset, num_classes, device):
     counts  = np.bincount(labels, minlength=num_classes).astype(np.float32)
     counts  = np.clip(counts, 1.0, None)
     weights = len(labels) / (num_classes * counts)
-    weights = weights / weights.mean()
-    # Floor prevents majority class (CIN ~624) from having near-zero weight (~0.075),
-    # which causes under-penalisation of CIN→GS false positives.
-    weights = np.clip(weights, 0.3, None)
-    return torch.tensor(weights, dtype=torch.float32, device=device)
+    return torch.tensor(weights / weights.mean(), dtype=torch.float32, device=device)
 
 
 def compute_per_class_f1(labels, preds, num_classes):
