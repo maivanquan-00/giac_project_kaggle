@@ -74,12 +74,8 @@ def train_epoch(model, loader, optimizer, graph, device, scheduler=None, minorit
                 noise_std=minority_aug_cfg.get("noise_std", 0.10),
             )
         optimizer.zero_grad()
-        if getattr(model, "lambda_supcon", 0.0) > 0.0:
-            logits, embeddings, attn_info = model(batch, graph, return_embeddings=True)
-            loss = model.compute_loss(logits, batch["label"], attn_info, embeddings=embeddings)
-        else:
-            logits, attn_info = model(batch, graph)
-            loss = model.compute_loss(logits, batch["label"], attn_info)
+        logits, attn_info = model(batch, graph)
+        loss = model.compute_loss(logits, batch["label"], attn_info)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
