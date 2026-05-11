@@ -17,6 +17,7 @@ from src.data.graph_builder import build_hetero_graph
 from src.model import GIACModel
 from src.utils import (
     EarlyStopping, compute_metrics, compute_per_cancer_type_f1, ensure_dir,
+    find_optimal_thresholds, apply_threshold_offsets,
     plot_confusion_matrix_figure, plot_cv_metrics,
     plot_split_class_distribution, plot_training_curves,
     print_classification_report, print_metrics,
@@ -106,6 +107,19 @@ def eval_epoch(model, loader, graph, device, return_predictions=False):
     return m
  
  
+@torch.no_grad()
+def collect_probabilities(model, loader, graph, device):
+    """Trả về softmax probabilities và labels từ loader. Dùng cho threshold calibration."""
+    model.eval()
+    all_probs, all_labels = [], []
+    for batch in loader:
+        batch = {k: v.to(device) for k, v in batch.items()}
+        logits, _ = model(batch, graph)
+        all_probs.append(torch.softmax(logits, dim=-1).cpu().numpy())
+        all_labels.extend(batch["label"].cpu().tolist())
+    return np.concatenate(all_probs, axis=0), np.array(all_labels)
+
+
 @torch.no_grad()
 def collect_attn_stats(model, loader, graph, device):
     model.eval()
@@ -312,11 +326,24 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     model.load_state_dict(ckpt["model"])
     test_m, test_labels, test_preds = eval_epoch(model, test_loader, graph, device, return_predictions=True)
     per_class_f1 = compute_per_class_f1(test_labels, test_preds, cfg["model"]["num_classes"])
+
+    # ── Threshold calibration (val-fitted, applied to test) ───────────────
+    num_classes = cfg["model"]["num_classes"]
+    val_probs, val_labels_arr = collect_probabilities(model, val_loader, graph, device)
+    offsets = find_optimal_thresholds(val_probs, val_labels_arr, num_classes)
+    test_probs, _ = collect_probabilities(model, test_loader, graph, device)
+    test_preds_cal = apply_threshold_offsets(test_probs, offsets)
+    test_m_cal = compute_metrics(test_labels, test_preds_cal.tolist())
+    per_class_f1_cal = compute_per_class_f1(test_labels, test_preds_cal.tolist(), num_classes)
  
     print(f"\n\U0001f4ca Test - {fold_name}")
-    print_metrics(test_m, "Test ")
-    print(f"\u2705 Best val F1: {best_f1:.4f}  |  Best val loss: {best_loss:.4f}")
-    print(f"\u2705 Test F1:     {test_m['f1']:.4f}")
+    offset_str = "  ".join(f"{o:+.3f}" for o in offsets)
+    print(f"\U0001f4d0 Threshold offsets [{offset_str}]")
+    print_metrics(test_m,     "Raw  ")
+    print_metrics(test_m_cal, "Cal  ")
+    gain = test_m_cal["f1"] - test_m["f1"]
+    print(f"\u2705 Best val F1: {best_f1:.4f}  |  Calibration gain: {gain:+.4f}")
+    print(f"\u2705 Test F1  raw={test_m['f1']:.4f}  cal={test_m_cal['f1']:.4f}")
  
     plot_training_curves(history, path=os.path.join(viz_dir, "training_curves.png"), title=fold_name)
     plot_confusion_matrix_figure(test_labels, test_preds,
@@ -326,9 +353,11 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"\n\U0001f4cb Classification Report - {fold_name}")
     print_classification_report(test_labels, test_preds,
                                 class_names=subtype_names[:cfg["model"]["num_classes"]])
-    print(f"\n🎯 Per-class F1 - {fold_name}")
+    print(f"\n🎯 Per-class F1 - {fold_name}  (raw → calibrated)")
     for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]]):
-        print(f"   {idx}:{name:<8s}  F1={per_class_f1[idx]:.4f}")
+        raw = per_class_f1[idx]
+        cal = per_class_f1_cal[idx]
+        print(f"   {idx}:{name:<8s}  {raw:.4f} → {cal:.4f}  ({cal-raw:+.4f})")
     save_confusion_matrix_csv(test_labels, test_preds,
         path=os.path.join(viz_dir, "confusion_matrix_test_absolute.csv"),
         class_names=subtype_names[:cfg["model"]["num_classes"]])
@@ -356,6 +385,8 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         train_f1_at_best = history["train_f1"][best_idx]
 
     return {"fold": fold_name, "best_val_f1": best_f1, "test_metrics": test_m,
+            "test_metrics_calibrated": test_m_cal, "per_class_f1_calibrated": per_class_f1_cal,
+            "threshold_offsets": offsets.tolist(),
             "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1,
             "per_class_f1": per_class_f1, "attn": attn,
             "best_val_loss": best_loss, "stop_epoch": epoch,
@@ -373,7 +404,14 @@ def summarize_cv(results):
             continue
         vals = np.array(vals)
         label = name.upper().replace("F1_WEIGHTED", "F1_WEIGHTED")
-        print(f"  {label:11s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
+        # Show calibrated F1 alongside raw
+        if name == "f1":
+            cal_vals = np.array([r.get("test_metrics_calibrated", {}).get("f1", 0) for r in results])
+            gain = cal_vals.mean() - vals.mean()
+            print(f"  {label:11s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}  "
+                  f"| cal={cal_vals.mean():.4f} ({gain:+.4f})")
+        else:
+            print(f"  {label:11s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
 
     # Per-cancer-type summary across folds
     all_per_ct = [r.get("per_ct_f1", {}) for r in results]
