@@ -28,7 +28,7 @@ graph:
   max_targets_per_mirna:    100
 
 model:
-  hidden_dim:  64
+  hidden_dim:  128
   gat_heads:   4
   gat_layers:  2
   gat_dropout: 0.5
