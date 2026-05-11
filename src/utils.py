@@ -244,6 +244,8 @@ def find_optimal_thresholds(
     num_classes: int,
     n_rounds: int = 3,
     resolution: float = 0.02,
+    min_class_samples: int = 5,
+    max_offset: float = 0.10,
 ) -> np.ndarray:
     """Tìm per-class probability offsets tối ưu hoá macro F1 trên val set.
 
@@ -252,13 +254,23 @@ def find_optimal_thresholds(
       offset_c < 0 → class c được predict nhiều hơn (dùng cho minority)
       offset_c > 0 → class c được predict ít hơn (dùng cho majority)
 
+    Args:
+        min_class_samples: class có ít hơn N mẫu trong val → bỏ qua (offset=0)
+                           tránh overfit offset vào val set quá nhỏ.
+        max_offset: giới hạn tìm kiếm ±max_offset (mặc định 0.10, không phải 0.30)
+
     Returns: offsets shape (num_classes,)
     """
+    val_counts = np.bincount(labels, minlength=num_classes)
+    calibrate_mask = val_counts >= min_class_samples  # chỉ calibrate class đủ mẫu
+
     offsets = np.zeros(num_classes, dtype=np.float64)
-    grid = np.arange(-0.30, 0.31, resolution)
+    grid = np.arange(-max_offset, max_offset + resolution / 2, resolution)
     for _ in range(n_rounds):
         improved = False
         for c in range(num_classes):
+            if not calibrate_mask[c]:
+                continue  # quá ít mẫu → giữ offset=0
             baseline = _f1_with_offsets(probs, labels, offsets)
             best_off, best_f1 = offsets[c], baseline
             for tau in grid:
