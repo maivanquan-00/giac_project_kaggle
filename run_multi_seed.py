@@ -85,14 +85,20 @@ def parse_per_cancer_type(stdout: str) -> dict | None:
             COAD    68.0    0.6982   0.1002
             STAD    76.0    0.6720   0.0776
     """
-    section = re.search(
-        r"Per-cancer-type F1 \(5-fold mean.*?\):\s*\n.*?Cancer.*?\n((?:\s+\S+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s*\n?)+)",
-        stdout,
-    )
-    if not section:
+    # Find header, then look for data rows in the following window.
+    # Cũ dùng regex span-newline phức tạp → fail silently. Đơn giản hoá.
+    header_match = re.search(r"Per-cancer-type F1 \(5-fold mean.*?\):", stdout)
+    if not header_match:
         return None
-    rows = re.findall(r"^\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*$",
-                      section.group(1), re.MULTILINE)
+    start = header_match.end()
+    section = stdout[start:start + 2000]
+    # Match rows: leading whitespace, ALL-CAPS cancer-type token, 3 numbers.
+    rows = re.findall(
+        r"^\s+([A-Z][A-Z0-9_-]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*$",
+        section, re.MULTILINE,
+    )
+    if not rows:
+        return None
     return {ct: {"n_per_fold": float(n), "f1_mean": float(m), "f1_std": float(s)}
             for ct, n, m, s in rows}
 
@@ -158,12 +164,19 @@ def parse_overfit_indicator(stdout: str) -> dict | None:
         return None
     section = stdout[pos:pos + 800]
     out = {}
-    m = re.search(r"Best Val F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+    # NOTE: train.py prints "Best  Val F1" (2 spaces) and "Train F1 (at best val)" — match flexible.
+    m = re.search(r"Train\s+F1\s*\(at best val\)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+    if m:
+        out["train_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
+    m = re.search(r"Best\s+Val\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
     if m:
         out["best_val_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
     m = re.search(r"Test\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
     if m:
         out["test_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
+    m = re.search(r"Train.Val gap\s*:\s*mean=([+\-\d.]+)", section)
+    if m:
+        out["train_val_gap"] = float(m.group(1))
     m = re.search(r"Val.Test gap\s*:\s*mean=([+\-\d.]+)", section)
     if m:
         out["val_test_gap"] = float(m.group(1))
@@ -456,17 +469,24 @@ def main():
         print("| Metric | Value | Note |")
         print("|---|---|---|")
         keys = [
-            ("best_val_f1", "Best Val F1", ""),
-            ("test_f1",     "Test F1",     ""),
+            ("train_f1",    "Train F1 (at best val)", ""),
+            ("best_val_f1", "Best Val F1",             ""),
+            ("test_f1",     "Test F1",                 ""),
         ]
         for k, label, note in keys:
             vals = [seed_overfit[s][k]["mean"] for s in seed_overfit if k in seed_overfit[s]]
             if vals:
                 print(f"| {label} | {np.mean(vals):.4f} | {note} |")
-        gaps = [seed_overfit[s].get("val_test_gap", 0.0) for s in seed_overfit
-                if "val_test_gap" in seed_overfit[s]]
-        if gaps:
-            avg_gap = np.mean(gaps)
+        tv_gaps = [seed_overfit[s].get("train_val_gap", 0.0) for s in seed_overfit
+                   if "train_val_gap" in seed_overfit[s]]
+        if tv_gaps:
+            avg_gap = np.mean(tv_gaps)
+            note = "OK" if avg_gap < 0.10 else ("⚠️ overfit nhẹ" if avg_gap < 0.20 else "🚨 strong overfit")
+            print(f"| Train−Val gap | {avg_gap:+.4f} | {note} |")
+        vt_gaps = [seed_overfit[s].get("val_test_gap", 0.0) for s in seed_overfit
+                   if "val_test_gap" in seed_overfit[s]]
+        if vt_gaps:
+            avg_gap = np.mean(vt_gaps)
             note = "OK" if abs(avg_gap) < 0.05 else "⚠️ val không đại diện test"
             print(f"| Val−Test gap | {avg_gap:+.4f} | {note} |")
         stops = [seed_overfit[s]["stop_epoch"]["mean"] for s in seed_overfit

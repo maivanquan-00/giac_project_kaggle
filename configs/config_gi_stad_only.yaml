@@ -7,16 +7,16 @@ data:
   cancer_types: ["STAD"]   # chỉ STAD — vừa filter samples, vừa chọn emQTL file
 
 preprocessing:
-  gene_top_k:   3500
-  meth_top_k:   3500
+  gene_top_k:   2000      # 380 samples → ~260 train/fold. 3500 quá cao (ratio 13:1). 2000 = ratio 7.7:1
+  meth_top_k:   2000      # same reasoning
   mirna_top_k:  null      # null = dùng tất cả miRNA sau low-expression filter (~593)
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
-  minority_boost_gene:  200
-  minority_boost_meth:  150
+  minority_boost_gene:  400      # cao hơn GI vì n nhỏ hơn — bù đắp cho EBV/GS/HM-SNV
+  minority_boost_meth:  300      # same
   minority_boost_mirna: 0
-  minority_classes: [3]   # HM-SNV vẫn là minority chính trong STAD
+  minority_classes: [1, 3, 4]   # GS=1, HM-SNV=3, EBV=4 — cả 3 minority trong STAD
 
 graph:
   emqtl_pval_threshold:    0.05
@@ -52,21 +52,21 @@ training:
   onecycle_pct_start:        0.1
   onecycle_div_factor:       10.0
   onecycle_final_div_factor: 100.0
-  weight_decay:          3.0e-3
+  weight_decay:          5.0e-3   # sync Stage 2A — chống overfit trên dataset nhỏ
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
   focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
   label_smoothing: 0.05
   balanced_sampler: false
-  lambda_frobenius: 0.001
-  patience: 20
+  lambda_frobenius: 0.002          # sync Stage 2A
+  patience: 15                     # sync Stage 2A
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
   subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
   minority_augmentation:
     enabled: true
-    class: [3]         # HM-SNV=3 (~7 sample trong STAD-only, rất hiếm)
+    class: [1, 3, 4]   # GS=1, HM-SNV=3, EBV=4 — augment cả 3 minority trong STAD
     noise_std: 0.10
 
 logging:

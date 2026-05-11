@@ -2,12 +2,12 @@
 
 **Đồ án tốt nghiệp HUST 2025.2** — Trường Công nghệ Thông tin và Truyền thông.
 
-| Mục | Thông tin |
-| --- | --- |
-| Sinh viên | Mai Văn Quân — MSSV 20225071 — KHMT 03 K67 |
-| Giáo viên hướng dẫn | TS. Lê Đức Hậu |
-| Lĩnh vực | Trí tuệ nhân tạo ứng dụng — Tin sinh học |
-| Thời gian thực hiện | 23/02/2026 – 12/07/2026 |
+| Mục                 | Thông tin                                |
+| ------------------- | ---------------------------------------- |
+| Sinh viên           | NULL                                     |
+| Giáo viên hướng dẫn | NULL                                     |
+| Lĩnh vực            | Trí tuệ nhân tạo ứng dụng — Tin sinh học |
+| Thời gian thực hiện | 23/02/2026 – 12/07/2026                  |
 
 > Đồ án đề xuất kiến trúc **GIAC** (Graph-Informed Asymmetric Cross-attention) — kế thừa và cải tiến mô hình baseline **MoXGATE** ([arXiv:2506.06980](https://arxiv.org/abs/2506.06980)) cho bài toán phân loại phân nhóm phân tử ung thư từ ba loại dữ liệu omics: gene expression, DNA methylation và miRNA expression của TCGA.
 
@@ -34,16 +34,16 @@
 
 ## 2. So sánh với MoXGATE (baseline)
 
-| Khía cạnh | **MoXGATE** ([arXiv 2506.06980](https://arxiv.org/abs/2506.06980)) | **GIAC (đề xuất)** |
-|-----------|---------|-----|
-| Đồ thị | ❌ Không dùng — 3 modalities xử lý độc lập | ✅ **Heterogeneous Graph 7 loại quan hệ** |
-| Encoder | 3 nhánh **Self-Attention** (8 heads, 256d) độc lập | **HeteroGAT** (GATv2 × 12 relation types) chia sẻ qua đồ thị |
-| Cross-Attention | **Đối xứng** — stack 3 modalities, attention xếp đều | **Bất đối xứng** — gene = Q, CpG/miRNA = K/V |
-| Kích hoạt attention | softmax (dày đặc) | **Entmax 1.5** (sparse → interpretable per-patient) |
-| Số tham số | ~12.6M | **~830K (1/15)** — lightweight |
-| Loss | Focal (γ=2, α=1) | Focal **per-class α từ class frequency** + label smoothing + Frobenius reg |
-| Đánh giá | Single 90/10 split (COAD+READ+STAD train, ESCA test) | **5-fold Stratified CV × 3 seeds = 15 runs** |
-| Dataset | GI + BRCA | GI + BRCA + UCEC + KIPAN (mở rộng 2 dataset) |
+| Khía cạnh           | **MoXGATE** ([arXiv 2506.06980](https://arxiv.org/abs/2506.06980)) | **GIAC (đề xuất)**                                                         |
+| ------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| Đồ thị              | ❌ Không dùng — 3 modalities xử lý độc lập                          | ✅ **Heterogeneous Graph 7 loại quan hệ**                                   |
+| Encoder             | 3 nhánh **Self-Attention** (8 heads, 256d) độc lập                 | **HeteroGAT** (GATv2 × 12 relation types) chia sẻ qua đồ thị               |
+| Cross-Attention     | **Đối xứng** — stack 3 modalities, attention xếp đều               | **Bất đối xứng** — gene = Q, CpG/miRNA = K/V                               |
+| Kích hoạt attention | softmax (dày đặc)                                                  | **Entmax 1.5** (sparse → interpretable per-patient)                        |
+| Số tham số          | ~12.6M                                                             | **~830K (1/15)** — lightweight                                             |
+| Loss                | Focal (γ=2, α=1)                                                   | Focal **per-class α từ class frequency** + label smoothing + Frobenius reg |
+| Đánh giá            | Single 90/10 split (COAD+READ+STAD train, ESCA test)               | **5-fold Stratified CV × 3 seeds = 15 runs**                               |
+| Dataset             | GI + BRCA                                                          | GI + BRCA + UCEC + KIPAN (mở rộng 2 dataset)                               |
 
 ---
 
@@ -92,12 +92,12 @@ data_final_<dataset>/                     ← Input cho train.py
 
 Mọi script `preprocess_{Gene,miRNA,CpG}.py` đều áp 4 bước **giống nhau** trên từng file TSV cohort:
 
-| Bước | Hành động | Lý do |
-|------|-----------|-------|
-| (a) | Lọc cột `barcode[13:15] == '01'` | Chỉ giữ **Primary Solid Tumor**, loại normal `11`, recurrence `02`, metastatic `06`. |
-| (b) | Cắt barcode về 12 ký tự đầu (`TCGA-XX-XXXX`) | Patient ID chuẩn — cho phép merge cross-modality. |
-| (c) | Loại bệnh nhân trùng (giữ Vial A = first) | Một bệnh nhân có thể có nhiều aliquot. |
-| (d) | Transpose → `(patients × features)` | Convention chung của framework downstream. |
+| Bước | Hành động                                    | Lý do                                                                                |
+| ---- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| (a)  | Lọc cột `barcode[13:15] == '01'`             | Chỉ giữ **Primary Solid Tumor**, loại normal `11`, recurrence `02`, metastatic `06`. |
+| (b)  | Cắt barcode về 12 ký tự đầu (`TCGA-XX-XXXX`) | Patient ID chuẩn — cho phép merge cross-modality.                                    |
+| (c)  | Loại bệnh nhân trùng (giữ Vial A = first)    | Một bệnh nhân có thể có nhiều aliquot.                                               |
+| (d)  | Transpose → `(patients × features)`          | Convention chung của framework downstream.                                           |
 
 ### 3.3 Gene Expression (`preprocess_Gene.py`)
 
@@ -129,10 +129,10 @@ TCGA STAR TPM TSV  ──────┤  lọc protein-coding
 
 Đầu vào là `log2(RPM+1)` từ Xena (~1.881 stem-loop precursors theo miRBase v22).
 
-| Bước | Chi tiết |
-|------|----------|
-| Chuẩn hoá Patient ID | (a)-(d) như trên |
-| QC | Drop miRNA thiếu >40% bệnh nhân + median imputation |
+| Bước                   | Chi tiết                                                                                 |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| Chuẩn hoá Patient ID   | (a)-(d) như trên                                                                         |
+| QC                     | Drop miRNA thiếu >40% bệnh nhân + median imputation                                      |
 | **Lọc low-expression** | Giữ miRNA có `log2(RPM+1) > 0.5` ở **≥20% bệnh nhân** → còn ~600 miRNA biểu hiện ổn định |
 
 Output: `processed_mirna.csv` (patients × ~600 miRNA, tên dạng `hsa-mir-21-1`).
@@ -163,13 +163,13 @@ Beta value ∈ [0, 1] (0 = unmethylated, 1 = fully methylated).
 
 ### 3.6 Labels — 5 dataset, 5 logic riêng
 
-| Dataset | File | Subtypes | Logic chính |
-|---------|------|----------|-------------|
-| **GI** | [preprocess_labels.py](preprocessed_data/preprocess_labels.py) | 5: CIN/GS/MSI/HM-SNV/EBV | Cắt prefix `ESCA_`/`COAD_`/...; merge `POLE → HM-SNV`. |
-| **BRCA** | [preprocess_labels_brca.py](preprocessed_data/preprocess_labels_brca.py) | 5 PAM50: LumA/LumB/Her2/Basal/Normal | Tách hậu tố sau `BRCA_`, normalize case. |
-| **UCEC** | [preprocess_labels_ucec.py](preprocessed_data/preprocess_labels_ucec.py) | 4: CN_LOW/CN_HIGH/MSI/POLE | Detect substring trong subtype string. |
-| **KIPAN** | [preprocess_labels_kipan.py](preprocessed_data/preprocess_labels_kipan.py) | 3: KICH/KIRC/KIRP | Tách từ `project_id` (`TCGA-KIRC` → `KIRC`). |
-| **LGG** | [preprocess_labels_lgg.py](preprocessed_data/preprocess_labels_lgg.py) | 3: Codel/IDHmut-non-codel/IDHwt | Match keyword `CODEL`, `NON.*CODEL`, `IDH.*WT`. |
+| Dataset   | File                                                                       | Subtypes                             | Logic chính                                            |
+| --------- | -------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------ |
+| **GI**    | [preprocess_labels.py](preprocessed_data/preprocess_labels.py)             | 5: CIN/GS/MSI/HM-SNV/EBV             | Cắt prefix `ESCA_`/`COAD_`/...; merge `POLE → HM-SNV`. |
+| **BRCA**  | [preprocess_labels_brca.py](preprocessed_data/preprocess_labels_brca.py)   | 5 PAM50: LumA/LumB/Her2/Basal/Normal | Tách hậu tố sau `BRCA_`, normalize case.               |
+| **UCEC**  | [preprocess_labels_ucec.py](preprocessed_data/preprocess_labels_ucec.py)   | 4: CN_LOW/CN_HIGH/MSI/POLE           | Detect substring trong subtype string.                 |
+| **KIPAN** | [preprocess_labels_kipan.py](preprocessed_data/preprocess_labels_kipan.py) | 3: KICH/KIRC/KIRP                    | Tách từ `project_id` (`TCGA-KIRC` → `KIRC`).           |
+| **LGG**   | [preprocess_labels_lgg.py](preprocessed_data/preprocess_labels_lgg.py)     | 3: Codel/IDHmut-non-codel/IDHwt      | Match keyword `CODEL`, `NON.*CODEL`, `IDH.*WT`.        |
 
 Output thống nhất: `Patient ID, Cancer_Type, Subtype, Target_Label` — `Target_Label` là integer 0..(num_classes−1).
 
@@ -230,35 +230,35 @@ StratifiedKFold(n=5)  →  5 fold × (train, val, test)
 
 ### 4.1 3 loại node
 
-| Node | Số lượng | Embedding |
-|------|----------|-----------|
-| `gene` | ~3.500-3.800 (sau ANOVA + minority boost) | `nn.Parameter(N_g, 64)` learnable, share giữa bệnh nhân |
-| `cpg` | ~3.500-3.800 (CpG site đã chọn) | `nn.Parameter(N_c, 64)` learnable |
-| `mirna` | 1.881 (giữ toàn bộ) | `nn.Parameter(N_m, 64)` learnable |
+| Node    | Số lượng                                  | Embedding                                               |
+| ------- | ----------------------------------------- | ------------------------------------------------------- |
+| `gene`  | ~3.500-3.800 (sau ANOVA + minority boost) | `nn.Parameter(N_g, 64)` learnable, share giữa bệnh nhân |
+| `cpg`   | ~3.500-3.800 (CpG site đã chọn)           | `nn.Parameter(N_c, 64)` learnable                       |
+| `mirna` | 1.881 (giữ toàn bộ)                       | `nn.Parameter(N_m, 64)` learnable                       |
 
 Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), không phải patient-specific. Tổng ~568K params (68% tổng số params toàn model).
 
 ### 4.2 7 loại cạnh sinh học (12 relation types khi tính cả chiều ngược)
 
-| # | Quan hệ | Nguồn | Ý nghĩa sinh học | # edges (GI) |
-|---|---------|-------|-------------------|--------------|
-| 1 | `cpg → regulates → gene` (+ chiều ngược) | TCGA emQTL `TCGA_emQTL_<cohort>.txt`, `p < 0.05` | Methylation điều tiết biểu hiện gene | ~24K |
-| 2 | `gene ↔ ppi ↔ gene` | STRING v12 `combined_score ≥ 700` | Tương tác protein-protein | ~30K |
-| 3 | `mirna → targets → gene` (+ chiều ngược) | miRTarBase `hsa_MTI.csv` | miRNA ức chế biểu hiện gene | ~145K |
-| 4 | `gene ↔ copathway ↔ gene` | Reactome `Ensembl2Reactome_All_Levels.txt`, pathway ≤ 50 genes | Cùng pathway → co-regulated | ~15K |
-| 5 | `mirna ↔ samefamily ↔ mirna` | TargetScan `miR_Family_Info.txt` | Cùng seed family → cơ chế tương tự | ~1.4K |
-| 6 | `cpg ↔ coregulates ↔ mirna` | **Suy diễn** từ #1 ∩ #3 (cùng regulate gene chung) | Đóng vòng CpG–Gene–miRNA | ~18K |
-| 7 | Self-loops (3 cho mỗi node type) | identity | Bảo toàn thông tin gốc qua GATv2 | = số nodes |
+| #   | Quan hệ                                  | Nguồn                                                          | Ý nghĩa sinh học                     | # edges (GI) |
+| --- | ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------ | ------------ |
+| 1   | `cpg → regulates → gene` (+ chiều ngược) | TCGA emQTL `TCGA_emQTL_<cohort>.txt`, `p < 0.05`               | Methylation điều tiết biểu hiện gene | ~24K         |
+| 2   | `gene ↔ ppi ↔ gene`                      | STRING v12 `combined_score ≥ 700`                              | Tương tác protein-protein            | ~30K         |
+| 3   | `mirna → targets → gene` (+ chiều ngược) | miRTarBase `hsa_MTI.csv`                                       | miRNA ức chế biểu hiện gene          | ~145K        |
+| 4   | `gene ↔ copathway ↔ gene`                | Reactome `Ensembl2Reactome_All_Levels.txt`, pathway ≤ 50 genes | Cùng pathway → co-regulated          | ~15K         |
+| 5   | `mirna ↔ samefamily ↔ mirna`             | TargetScan `miR_Family_Info.txt`                               | Cùng seed family → cơ chế tương tự   | ~1.4K        |
+| 6   | `cpg ↔ coregulates ↔ mirna`              | **Suy diễn** từ #1 ∩ #3 (cùng regulate gene chung)             | Đóng vòng CpG–Gene–miRNA             | ~18K         |
+| 7   | Self-loops (3 cho mỗi node type)         | identity                                                       | Bảo toàn thông tin gốc qua GATv2     | = số nodes   |
 
 **Capping** để tránh đồ thị quá dày (config `graph.max_edges_per_node = 20`, `max_targets_per_mirna = 100`, `max_coregulation_edges = 10`, `max_pathway_size = 50`, `MAX_FAMILY_SIZE = 20`).
 
 ### 4.3 Quy tắc matching tên (quan trọng cho lookup nhất quán)
 
-| Modality | Normalization key |
-|----------|-------------------|
-| Gene | UPPERCASE (`TP53`) — cho cả `gene_idx`, alias STRING, HGNC mapping |
-| CpG | giữ nguyên (`cg00000029`) |
-| miRNA | lowercase (`hsa-mir-21-1`); thêm regex strip suffix `-1/-2/-3` (precursor) và `-3p/-5p` (mature) khi cần match TargetScan/miRTarBase |
+| Modality | Normalization key                                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Gene     | UPPERCASE (`TP53`) — cho cả `gene_idx`, alias STRING, HGNC mapping                                                                   |
+| CpG      | giữ nguyên (`cg00000029`)                                                                                                            |
+| miRNA    | lowercase (`hsa-mir-21-1`); thêm regex strip suffix `-1/-2/-3` (precursor) và `-3p/-5p` (mature) khi cần match TargetScan/miRTarBase |
 
 ```
 gene_idx  : { "TP53": 0, "BRCA1": 1, ... }              # UPPER
@@ -365,11 +365,11 @@ $$
 
 **Khác MoXGATE:**
 
-| | MoXGATE | GIAC |
-|---|---------|------|
+|                      | MoXGATE                                     | GIAC                                         |
+| -------------------- | ------------------------------------------- | -------------------------------------------- |
 | Vai trò 3 modalities | Đối xứng (stack & cross-attention 32 heads) | **Bất đối xứng** (gene = Q, CpG/miRNA = K/V) |
-| Sparsity | softmax (dense) | **entmax15** (sparse) |
-| Interpretability | Chỉ modality weights (3,) | Per-patient per-token + modality |
+| Sparsity             | softmax (dense)                             | **entmax15** (sparse)                        |
+| Interpretability     | Chỉ modality weights (3,)                   | Per-patient per-token + modality             |
 
 ### 5.3 Module 3 — `SubtypeClassifier` + Focal Loss
 
@@ -391,15 +391,15 @@ $$
 
 ### 5.4 Tổng tham số (~830K) — phân bố
 
-| Component | Params | % |
-|-----------|--------|---|
-| 3 node embedding tables (3 × N × 64) | ~568K | 68% |
-| HeteroConv 2 layers × 12 GATv2 relations | ~98K | 12% |
-| Cross-attention (W_q, 2×W_k, 2×W_v, W_o) | ~25K | 3% |
-| Position embeddings (2 × 32 × 64) | ~4K | 0.5% |
-| LayerNorms + classifier head | ~7K | 0.7% |
-| Misc (log_temp, modality_logits, alpha buf) | <1K | — |
-| **Total** | **~830K** | 100% |
+| Component                                   | Params    | %    |
+| ------------------------------------------- | --------- | ---- |
+| 3 node embedding tables (3 × N × 64)        | ~568K     | 68%  |
+| HeteroConv 2 layers × 12 GATv2 relations    | ~98K      | 12%  |
+| Cross-attention (W_q, 2×W_k, 2×W_v, W_o)    | ~25K      | 3%   |
+| Position embeddings (2 × 32 × 64)           | ~4K       | 0.5% |
+| LayerNorms + classifier head                | ~7K       | 0.7% |
+| Misc (log_temp, modality_logits, alpha buf) | <1K       | —    |
+| **Total**                                   | **~830K** | 100% |
 
 → **MoXGATE ~12.6M params** → GIAC chỉ bằng **1/15**, nhưng đạt độ ổn định cao hơn 2-5 lần qua multi-seed (xem §7).
 
@@ -409,18 +409,18 @@ $$
 
 **File:** [train.py](train.py), [run_multi_seed.py](run_multi_seed.py)
 
-| Thành phần | Cấu hình mặc định |
-|-----------|--------------------|
-| **Đánh giá** | 5-fold Stratified CV (`StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)`); val set = 15% of train-fold qua `train_test_split` riêng |
-| **Multi-seed** | 3 seeds (42, 123, 2024) × 5 folds = **15 runs/dataset** |
-| **Optimizer** | AdamW, 2 param groups: base (lr=1e-4, wd=3e-3), `node_emb` (lr=1e-4, wd=1.5e-2) |
-| **Scheduler** | OneCycleLR (max_lr=5e-4, pct_start=0.1, div_factor=10, final_div_factor=100) — step per batch |
-| **Loss** | Focal + Frobenius reg |
-| **Class imbalance** | (a) Per-class `α` từ inverse frequency  (b) Optional `WeightedRandomSampler` (đã thử nghiệm — gây collapse trên hầu hết dataset, mặc định OFF)  (c) **Minority augmentation**: thêm Gaussian noise σ=0.10 vào sample minority class trong mỗi batch — chống memorize bệnh nhân hiếm |
-| **Gradient clipping** | `max_norm = 1.0` |
-| **Early stopping** | Patience = 20 epochs trên `val_f1` macro |
-| **Epochs** | 150 |
-| **Model selection** | best `val_f1` macro (có thể đổi `model_selection_metric: val_loss`) |
+| Thành phần            | Cấu hình mặc định                                                                                                                                                                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Đánh giá**          | 5-fold Stratified CV (`StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)`); val set = 15% of train-fold qua `train_test_split` riêng                                                                                                                                     |
+| **Multi-seed**        | 3 seeds (42, 123, 2024) × 5 folds = **15 runs/dataset**                                                                                                                                                                                                                             |
+| **Optimizer**         | AdamW, 2 param groups: base (lr=1e-4, wd=3e-3), `node_emb` (lr=1e-4, wd=1.5e-2)                                                                                                                                                                                                     |
+| **Scheduler**         | OneCycleLR (max_lr=5e-4, pct_start=0.1, div_factor=10, final_div_factor=100) — step per batch                                                                                                                                                                                       |
+| **Loss**              | Focal + Frobenius reg                                                                                                                                                                                                                                                               |
+| **Class imbalance**   | (a) Per-class `α` từ inverse frequency  (b) Optional `WeightedRandomSampler` (đã thử nghiệm — gây collapse trên hầu hết dataset, mặc định OFF)  (c) **Minority augmentation**: thêm Gaussian noise σ=0.10 vào sample minority class trong mỗi batch — chống memorize bệnh nhân hiếm |
+| **Gradient clipping** | `max_norm = 1.0`                                                                                                                                                                                                                                                                    |
+| **Early stopping**    | Patience = 20 epochs trên `val_f1` macro                                                                                                                                                                                                                                            |
+| **Epochs**            | 150                                                                                                                                                                                                                                                                                 |
+| **Model selection**   | best `val_f1` macro (có thể đổi `model_selection_metric: val_loss`)                                                                                                                                                                                                                 |
 
 **Metrics báo cáo (`src/utils.py:compute_metrics`):**
 - **Primary: Macro F1** — conservative cho imbalanced multi-class (đối xử mọi class như nhau).
@@ -450,30 +450,30 @@ python train.py --config configs/config.yaml --seed 42
 
 ### 7.1 So sánh GIAC vs MoXGATE (Macro F1, 3 seeds × 5 folds = 15 runs)
 
-| Dataset | n | # subtypes | **GIAC macro F1** | MoXGATE 5-fold macro F1 | Δ | Verdict |
-|---------|---|-----------|-------------------|--------------------------|---|---------|
-| GI (COAD+ESCA+READ+STAD) | 917 | 5 (CIN/GS/MSI/HM-SNV/EBV) | 0.6626 ± 0.035 | 0.7132 ± 0.063 | −0.051 | MoXGATE |
-| BRCA | 965 | 5 (Basal/Her2/LumA/LumB/Normal) | 0.8077 ± 0.009 | 0.8184 ± 0.029 | −0.011 | gần tie |
-| **UCEC** | 499 | 4 (CN_high/CN_low/MSI/POLE) | **0.7447 ± 0.009** | 0.7193 ± 0.041 | **+0.025** ✓ | **GIAC win** |
-| KIPAN | 685 | 3 (KICH/KIRC/KIRP) | 0.8918 ± 0.008 | 0.9526 ± 0.017 | −0.061 | MoXGATE |
+| Dataset                  | n   | # subtypes                      | **GIAC macro F1**  | MoXGATE 5-fold macro F1 | Δ            | Verdict      |
+| ------------------------ | --- | ------------------------------- | ------------------ | ----------------------- | ------------ | ------------ |
+| GI (COAD+ESCA+READ+STAD) | 917 | 5 (CIN/GS/MSI/HM-SNV/EBV)       | 0.6626 ± 0.035     | 0.7132 ± 0.063          | −0.051       | MoXGATE      |
+| BRCA                     | 965 | 5 (Basal/Her2/LumA/LumB/Normal) | 0.8077 ± 0.009     | 0.8184 ± 0.029          | −0.011       | gần tie      |
+| **UCEC**                 | 499 | 4 (CN_high/CN_low/MSI/POLE)     | **0.7447 ± 0.009** | 0.7193 ± 0.041          | **+0.025** ✓ | **GIAC win** |
+| KIPAN                    | 685 | 3 (KICH/KIRC/KIRP)              | 0.8918 ± 0.008     | 0.9526 ± 0.017          | −0.061       | MoXGATE      |
 
 ### 7.2 Weighted F1 (đối chiếu paper MoXGATE)
 
-| Dataset | GIAC | MoXGATE | Δ |
-|---------|------|---------|---|
-| GI | 0.8226 ± 0.022 | 0.8626 ± 0.020 | −0.040 |
-| BRCA | 0.8690 ± 0.011 | 0.8717 ± 0.021 | −0.003 (tie) |
-| **UCEC** | **0.7919 ± 0.006** | 0.7765 ± 0.027 | +0.015 ✓ |
-| KIPAN | 0.9160 ± 0.008 | 0.9593 ± 0.013 | −0.043 |
+| Dataset  | GIAC               | MoXGATE        | Δ            |
+| -------- | ------------------ | -------------- | ------------ |
+| GI       | 0.8226 ± 0.022     | 0.8626 ± 0.020 | −0.040       |
+| BRCA     | 0.8690 ± 0.011     | 0.8717 ± 0.021 | −0.003 (tie) |
+| **UCEC** | **0.7919 ± 0.006** | 0.7765 ± 0.027 | +0.015 ✓     |
+| KIPAN    | 0.9160 ± 0.008     | 0.9593 ± 0.013 | −0.043       |
 
 ### 7.3 Phát hiện quan trọng — GIAC ổn định hơn MoXGATE 2-5 lần
 
-| Dataset | GIAC std | MoXGATE std | Ratio |
-|---------|----------|-------------|-------|
-| GI | 0.035 | 0.063 | **1.8×** stable |
-| BRCA | 0.009 | 0.029 | **3.2×** stable |
-| UCEC | 0.009 | 0.041 | **4.6×** stable |
-| KIPAN | 0.008 | 0.017 | **2.1×** stable |
+| Dataset | GIAC std | MoXGATE std | Ratio           |
+| ------- | -------- | ----------- | --------------- |
+| GI      | 0.035    | 0.063       | **1.8×** stable |
+| BRCA    | 0.009    | 0.029       | **3.2×** stable |
+| UCEC    | 0.009    | 0.041       | **4.6×** stable |
+| KIPAN   | 0.008    | 0.017       | **2.1×** stable |
 
 → Đây là điểm mạnh có thể nhấn mạnh: **lightweight + parameter efficient + training stability** — phù hợp triển khai lâm sàng (kết quả dự đoán được, ít phụ thuộc seed).
 
@@ -655,26 +655,26 @@ logging:
 
 ### 10.1 Dữ liệu TCGA multi-omics
 
-| Modality | Nguồn | Định dạng | Đơn vị |
-|----------|-------|-----------|--------|
-| Gene expression | TCGA RNA-Seq (UCSC Xena STAR pipeline) | TSV matrix (gene × sample) | log2(TPM+1) |
-| DNA methylation | TCGA Illumina HumanMethylation 27k + 450k | TSV matrix (CpG × sample) | beta value [0,1] |
-| miRNA expression | TCGA miRNA-Seq (UCSC Xena, stem-loop) | TSV matrix (miRNA × sample) | log2(RPM+1) |
-| Clinical labels | cBioPortal / TCGA PanCanAtlas TSV | TSV với cột `Patient ID`, `Subtype` | text |
+| Modality         | Nguồn                                     | Định dạng                           | Đơn vị           |
+| ---------------- | ----------------------------------------- | ----------------------------------- | ---------------- |
+| Gene expression  | TCGA RNA-Seq (UCSC Xena STAR pipeline)    | TSV matrix (gene × sample)          | log2(TPM+1)      |
+| DNA methylation  | TCGA Illumina HumanMethylation 27k + 450k | TSV matrix (CpG × sample)           | beta value [0,1] |
+| miRNA expression | TCGA miRNA-Seq (UCSC Xena, stem-loop)     | TSV matrix (miRNA × sample)         | log2(RPM+1)      |
+| Clinical labels  | cBioPortal / TCGA PanCanAtlas TSV         | TSV với cột `Patient ID`, `Subtype` | text             |
 
 ### 10.2 Prior knowledge databases
 
-| Nguồn | Dùng cho cạnh | File |
-|-------|---------------|------|
-| **emQTL (TCGA)** | CpG → Gene | `TCGA_emQTL_<COHORT>.txt` (cohort-specific) |
-| **STRING v12** | Gene ↔ Gene PPI | `9606.protein.links.v12.0.txt`, `9606.protein.aliases.v12.0.txt` |
-| **Reactome** | Gene ↔ Gene co-pathway | `Ensembl2Reactome_All_Levels.txt` |
-| **miRTarBase** | miRNA → Gene | `hsa_MTI.csv` |
-| **TargetScan** | miRNA ↔ miRNA family | `miR_Family_Info.txt` |
-| **HGNC** | Ensembl → gene symbol | `hgnc_complete_set.txt` |
-| **GENCODE v36** | Lọc protein-coding genes | `gencode.v36.annotation.gtf` |
-| **Chen et al. 2013** | Loại CpG cross-reactive | `cross_reactive_probes.txt` |
-| **Illumina manifest** | Loại CpG trên chrX/Y | `HumanMethylation450_manifest.csv` |
+| Nguồn                 | Dùng cho cạnh            | File                                                             |
+| --------------------- | ------------------------ | ---------------------------------------------------------------- |
+| **emQTL (TCGA)**      | CpG → Gene               | `TCGA_emQTL_<COHORT>.txt` (cohort-specific)                      |
+| **STRING v12**        | Gene ↔ Gene PPI          | `9606.protein.links.v12.0.txt`, `9606.protein.aliases.v12.0.txt` |
+| **Reactome**          | Gene ↔ Gene co-pathway   | `Ensembl2Reactome_All_Levels.txt`                                |
+| **miRTarBase**        | miRNA → Gene             | `hsa_MTI.csv`                                                    |
+| **TargetScan**        | miRNA ↔ miRNA family     | `miR_Family_Info.txt`                                            |
+| **HGNC**              | Ensembl → gene symbol    | `hgnc_complete_set.txt`                                          |
+| **GENCODE v36**       | Lọc protein-coding genes | `gencode.v36.annotation.gtf`                                     |
+| **Chen et al. 2013**  | Loại CpG cross-reactive  | `cross_reactive_probes.txt`                                      |
+| **Illumina manifest** | Loại CpG trên chrX/Y     | `HumanMethylation450_manifest.csv`                               |
 
 ---
 
@@ -694,10 +694,10 @@ logging:
 
 ## 12. Tài liệu chi tiết
 
-| File | Nội dung |
-|------|----------|
-| [docs/PIVOT_PLAN.md](docs/PIVOT_PLAN.md) | Strategy chính: FROZEN architecture sau khi nộp PGNV; lộ trình audit + data expansion + LGG. |
-| [docs/MODEL_ARCHITECTURE.md](docs/MODEL_ARCHITECTURE.md) | Chi tiết module + công thức + dimension annotation (slide-friendly). |
-| [docs/RESULTS.md](docs/RESULTS.md) | Single source of truth — paste output từ `run_multi_seed.py` ở đây. |
-| [docs/issues/](docs/issues/) | Issue tracker: 09 (model audit), 10 (STAD-only), 11 (LGG vs MOFNet). |
-| [CLAUDE.md](CLAUDE.md) | Quy ước project + assistant guidelines. |
+| File                                                     | Nội dung                                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [docs/PIVOT_PLAN.md](docs/PIVOT_PLAN.md)                 | Strategy chính: FROZEN architecture sau khi nộp PGNV; lộ trình audit + data expansion + LGG. |
+| [docs/MODEL_ARCHITECTURE.md](docs/MODEL_ARCHITECTURE.md) | Chi tiết module + công thức + dimension annotation (slide-friendly).                         |
+| [docs/RESULTS.md](docs/RESULTS.md)                       | Single source of truth — paste output từ `run_multi_seed.py` ở đây.                          |
+| [docs/issues/](docs/issues/)                             | Issue tracker: 09 (model audit), 10 (STAD-only), 11 (LGG vs MOFNet).                         |
+| [CLAUDE.md](CLAUDE.md)                                   | Quy ước project + assistant guidelines.                                                      |
