@@ -586,12 +586,21 @@ def _load_cpg_island_edges(
             usecols=["Name", "UCSC_CpG_Islands_Name", "Relation_to_UCSC_CpG_Island"],
             dtype=str,
             encoding="utf-8",
-            errors="replace",
             low_memory=False,
         )
-    except Exception as e:
-        print(f"lỗi parse CSV: {e}")
-        return None
+    except Exception:
+        try:
+            df = pd.read_csv(
+                manifest_file,
+                skiprows=skiprows,
+                usecols=["Name", "UCSC_CpG_Islands_Name", "Relation_to_UCSC_CpG_Island"],
+                dtype=str,
+                encoding="latin-1",
+                low_memory=False,
+            )
+        except Exception as e:
+            print(f"lỗi parse CSV: {e}")
+            return None
 
     # Lọc theo relation
     valid_relations: set
