@@ -234,22 +234,22 @@ StratifiedKFold(n=5)  →  5 fold × (train, val, test)
 | ------- | ----------------------------------------- | ------------------------------------------------------- |
 | `gene`  | ~3.500-3.800 (sau ANOVA + minority boost) | `nn.Parameter(N_g, 64)` learnable, share giữa bệnh nhân |
 | `cpg`   | ~3.500-3.800 (CpG site đã chọn)           | `nn.Parameter(N_c, 64)` learnable                       |
-| `mirna` | 1.881 (giữ toàn bộ)                       | `nn.Parameter(N_m, 64)` learnable                       |
+| `mirna` | ~500 (giữ toàn bộ)                        | `nn.Parameter(N_m, 64)` learnable                       |
 
 Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), không phải patient-specific. Tổng ~568K params (68% tổng số params toàn model).
 
 ### 4.2 8 loại cạnh sinh học (13 relation types khi tính cả chiều ngược)
 
-| #   | Quan hệ                                  | Nguồn                                                          | Ý nghĩa sinh học                     | # edges (GI) |
-| --- | ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------ | ------------ |
-| 1   | `cpg → regulates → gene` (+ chiều ngược) | TCGA emQTL `TCGA_emQTL_<cohort>.txt`, `p < 0.05`               | Methylation điều tiết biểu hiện gene | ~24K         |
-| 2   | `gene ↔ ppi ↔ gene`                      | STRING v12 `combined_score ≥ 700`                              | Tương tác protein-protein            | ~30K         |
-| 3   | `mirna → targets → gene` (+ chiều ngược) | miRTarBase `hsa_MTI.csv`                                       | miRNA ức chế biểu hiện gene          | ~145K        |
-| 4   | `gene ↔ copathway ↔ gene`                | Reactome `Ensembl2Reactome_All_Levels.txt`, pathway ≤ 50 genes | Cùng pathway → co-regulated          | ~15K         |
-| 5   | `mirna ↔ samefamily ↔ mirna`             | TargetScan `miR_Family_Info.txt`                               | Cùng seed family → cơ chế tương tự   | ~1.4K        |
-| 6   | `cpg ↔ coregulates ↔ mirna`              | **Suy diễn** từ #1 ∩ #3 (cùng regulate gene chung)             | Đóng vòng CpG–Gene–miRNA             | ~18K         |
-| 7   | `cpg ↔ sameisland ↔ cpg`                 | Illumina 450K manifest `HumanMethylation450_manifest.csv`      | Cùng CpG island → co-methylated, cùng regulatory region | TBD |
-| 8   | Self-loops (3 cho mỗi node type)         | identity                                                       | Bảo toàn thông tin gốc qua GATv2     | = số nodes   |
+| #   | Quan hệ                                  | Nguồn                                                          | Ý nghĩa sinh học                                        | # edges (GI) |
+| --- | ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------- | ------------ |
+| 1   | `cpg → regulates → gene` (+ chiều ngược) | TCGA emQTL `TCGA_emQTL_<cohort>.txt`, `p < 0.05`               | Methylation điều tiết biểu hiện gene                    | ~24K         |
+| 2   | `gene ↔ ppi ↔ gene`                      | STRING v12 `combined_score ≥ 700`                              | Tương tác protein-protein                               | ~30K         |
+| 3   | `mirna → targets → gene` (+ chiều ngược) | miRTarBase `hsa_MTI.csv`                                       | miRNA ức chế biểu hiện gene                             | ~145K        |
+| 4   | `gene ↔ copathway ↔ gene`                | Reactome `Ensembl2Reactome_All_Levels.txt`, pathway ≤ 50 genes | Cùng pathway → co-regulated                             | ~15K         |
+| 5   | `mirna ↔ samefamily ↔ mirna`             | TargetScan `miR_Family_Info.txt`                               | Cùng seed family → cơ chế tương tự                      | ~1.4K        |
+| 6   | `cpg ↔ coregulates ↔ mirna`              | **Suy diễn** từ #1 ∩ #3 (cùng regulate gene chung)             | Đóng vòng CpG–Gene–miRNA                                | ~18K         |
+| 7   | `cpg ↔ sameisland ↔ cpg`                 | Illumina 450K manifest `HumanMethylation450_manifest.csv`      | Cùng CpG island → co-methylated, cùng regulatory region | TBD          |
+| 8   | Self-loops (3 cho mỗi node type)         | identity                                                       | Bảo toàn thông tin gốc qua GATv2                        | = số nodes   |
 
 **Capping** để tránh đồ thị quá dày (config `graph.max_edges_per_node = 20`, `max_targets_per_mirna = 100`, `max_coregulation_edges = 10`, `max_pathway_size = 50`, `MAX_FAMILY_SIZE = 20`).
 
@@ -665,17 +665,17 @@ logging:
 
 ### 10.2 Prior knowledge databases
 
-| Nguồn                 | Dùng cho cạnh            | File                                                             |
-| --------------------- | ------------------------ | ---------------------------------------------------------------- |
-| **emQTL (TCGA)**      | CpG → Gene               | `TCGA_emQTL_<COHORT>.txt` (cohort-specific)                      |
-| **STRING v12**        | Gene ↔ Gene PPI          | `9606.protein.links.v12.0.txt`, `9606.protein.aliases.v12.0.txt` |
-| **Reactome**          | Gene ↔ Gene co-pathway   | `Ensembl2Reactome_All_Levels.txt`                                |
-| **miRTarBase**        | miRNA → Gene             | `hsa_MTI.csv`                                                    |
-| **TargetScan**        | miRNA ↔ miRNA family     | `miR_Family_Info.txt`                                            |
-| **HGNC**              | Ensembl → gene symbol    | `hgnc_complete_set.txt`                                          |
-| **GENCODE v36**       | Lọc protein-coding genes | `gencode.v36.annotation.gtf`                                     |
-| **Chen et al. 2013**  | Loại CpG cross-reactive  | `cross_reactive_probes.txt`                                      |
-| **Illumina 450K manifest** | Loại CpG trên chrX/Y (tiền xử lý) + CpG island edges (graph) | `HumanMethylation450_manifest.csv` |
+| Nguồn                      | Dùng cho cạnh                                                | File                                                             |
+| -------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- |
+| **emQTL (TCGA)**           | CpG → Gene                                                   | `TCGA_emQTL_<COHORT>.txt` (cohort-specific)                      |
+| **STRING v12**             | Gene ↔ Gene PPI                                              | `9606.protein.links.v12.0.txt`, `9606.protein.aliases.v12.0.txt` |
+| **Reactome**               | Gene ↔ Gene co-pathway                                       | `Ensembl2Reactome_All_Levels.txt`                                |
+| **miRTarBase**             | miRNA → Gene                                                 | `hsa_MTI.csv`                                                    |
+| **TargetScan**             | miRNA ↔ miRNA family                                         | `miR_Family_Info.txt`                                            |
+| **HGNC**                   | Ensembl → gene symbol                                        | `hgnc_complete_set.txt`                                          |
+| **GENCODE v36**            | Lọc protein-coding genes                                     | `gencode.v36.annotation.gtf`                                     |
+| **Chen et al. 2013**       | Loại CpG cross-reactive                                      | `cross_reactive_probes.txt`                                      |
+| **Illumina 450K manifest** | Loại CpG trên chrX/Y (tiền xử lý) + CpG island edges (graph) | `HumanMethylation450_manifest.csv`                               |
 
 ---
 

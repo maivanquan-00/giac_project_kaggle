@@ -1,7 +1,7 @@
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
-  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/HumanMethylation450_manifest.csv"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
   cancer_types: ["COAD", "ESCA", "READ", "STAD"]
 
 preprocessing:

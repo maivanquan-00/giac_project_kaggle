@@ -2,7 +2,7 @@ data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_kipan"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
   emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/KIPAN_extend"
-  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/HumanMethylation450_manifest.csv"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
   cancer_types: ["KICH", "KIRC", "KIRP"]
 
 preprocessing:
