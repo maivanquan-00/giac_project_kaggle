@@ -2,6 +2,7 @@ data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_brca"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
   emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/BRCA_extend"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/HumanMethylation450_manifest.csv"
   cancer_types: ["BRCA"]
 
 preprocessing:
@@ -27,6 +28,8 @@ graph:
   use_mirna_family: true
   reactome_max_pathway_size: 50
   max_targets_per_mirna:    100
+  use_cpg_island:      false
+  cpg_island_relation: "Island"
 
 model:
   hidden_dim:  64

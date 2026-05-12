@@ -1,6 +1,7 @@
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/HumanMethylation450_manifest.csv"
   cancer_types: ["COAD", "ESCA", "READ", "STAD"]
 
 preprocessing:
@@ -26,9 +27,11 @@ graph:
   use_mirna_family: true
   reactome_max_pathway_size: 50
   max_targets_per_mirna:    100
+  use_cpg_island:      true   # true để bật CpG↔CpG edges (cần manifest_file trong data)
+  cpg_island_relation: "Island"  # "Island" | "Island+Shore" | "all"
 
 model:
-  hidden_dim:  128
+  hidden_dim:  64
   gat_heads:   4
   gat_layers:  2
   gat_dropout: 0.5

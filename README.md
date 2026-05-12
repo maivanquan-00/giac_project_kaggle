@@ -25,7 +25,7 @@
 ### 1.2 Sản phẩm đề xuất
 
 1. **Kiến trúc tổng quát** áp dụng được cho nhiều bộ dữ liệu đa omics, không bị giới hạn loại ung thư hay số subtype cụ thể (đã thử nghiệm trên 4 dataset TCGA: GI/BRCA/UCEC/KIPAN).
-2. **Đồ thị dị thể đa omics** tích hợp **7 loại quan hệ sinh học** từ 6 cơ sở dữ liệu chuẩn (emQTL, STRING PPI, Reactome, miRTarBase, TargetScan miR family, co-regulation suy diễn).
+2. **Đồ thị dị thể đa omics** tích hợp **8 loại quan hệ sinh học** từ 7 cơ sở dữ liệu chuẩn (emQTL, STRING PPI, Reactome, miRTarBase, TargetScan miR family, Illumina 450K CpG island, co-regulation suy diễn).
 3. **Cross-Attention bất đối xứng**: gene đóng vai trò *Query*, CpG/miRNA đóng vai trò *Key/Value* — phản ánh đúng *central dogma* (methylation/miRNA điều khiển ngược lên biểu hiện gene).
 4. **Source code module hoá**, dễ mở rộng sang dataset mới (chỉ cần thêm 1 file `config_*.yaml` và file `clean_labels_*.csv`).
 5. **Kết quả thực nghiệm** kiểm chứng bằng **3 seeds × 5-fold Stratified CV = 15 runs/dataset** thay vì single split như MoXGATE — đảm bảo độ tin cậy thống kê.
@@ -36,8 +36,8 @@
 
 | Khía cạnh           | **MoXGATE** ([arXiv 2506.06980](https://arxiv.org/abs/2506.06980)) | **GIAC (đề xuất)**                                                         |
 | ------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Đồ thị              | ❌ Không dùng — 3 modalities xử lý độc lập                          | ✅ **Heterogeneous Graph 7 loại quan hệ**                                   |
-| Encoder             | 3 nhánh **Self-Attention** (8 heads, 256d) độc lập                 | **HeteroGAT** (GATv2 × 12 relation types) chia sẻ qua đồ thị               |
+| Đồ thị              | ❌ Không dùng — 3 modalities xử lý độc lập                          | ✅ **Heterogeneous Graph 8 loại quan hệ**                                   |
+| Encoder             | 3 nhánh **Self-Attention** (8 heads, 256d) độc lập                 | **HeteroGAT** (GATv2 × 13 relation types) chia sẻ qua đồ thị               |
 | Cross-Attention     | **Đối xứng** — stack 3 modalities, attention xếp đều               | **Bất đối xứng** — gene = Q, CpG/miRNA = K/V                               |
 | Kích hoạt attention | softmax (dày đặc)                                                  | **Entmax 1.5** (sparse → interpretable per-patient)                        |
 | Số tham số          | ~12.6M                                                             | **~830K (1/15)** — lightweight                                             |
@@ -238,7 +238,7 @@ StratifiedKFold(n=5)  →  5 fold × (train, val, test)
 
 Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), không phải patient-specific. Tổng ~568K params (68% tổng số params toàn model).
 
-### 4.2 7 loại cạnh sinh học (12 relation types khi tính cả chiều ngược)
+### 4.2 8 loại cạnh sinh học (13 relation types khi tính cả chiều ngược)
 
 | #   | Quan hệ                                  | Nguồn                                                          | Ý nghĩa sinh học                     | # edges (GI) |
 | --- | ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------ | ------------ |
@@ -248,7 +248,8 @@ Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), k
 | 4   | `gene ↔ copathway ↔ gene`                | Reactome `Ensembl2Reactome_All_Levels.txt`, pathway ≤ 50 genes | Cùng pathway → co-regulated          | ~15K         |
 | 5   | `mirna ↔ samefamily ↔ mirna`             | TargetScan `miR_Family_Info.txt`                               | Cùng seed family → cơ chế tương tự   | ~1.4K        |
 | 6   | `cpg ↔ coregulates ↔ mirna`              | **Suy diễn** từ #1 ∩ #3 (cùng regulate gene chung)             | Đóng vòng CpG–Gene–miRNA             | ~18K         |
-| 7   | Self-loops (3 cho mỗi node type)         | identity                                                       | Bảo toàn thông tin gốc qua GATv2     | = số nodes   |
+| 7   | `cpg ↔ sameisland ↔ cpg`                 | Illumina 450K manifest `HumanMethylation450_manifest.csv`      | Cùng CpG island → co-methylated, cùng regulatory region | TBD |
+| 8   | Self-loops (3 cho mỗi node type)         | identity                                                       | Bảo toàn thông tin gốc qua GATv2     | = số nodes   |
 
 **Capping** để tránh đồ thị quá dày (config `graph.max_edges_per_node = 20`, `max_targets_per_mirna = 100`, `max_coregulation_edges = 10`, `max_pathway_size = 50`, `MAX_FAMILY_SIZE = 20`).
 
@@ -674,7 +675,7 @@ logging:
 | **HGNC**              | Ensembl → gene symbol    | `hgnc_complete_set.txt`                                          |
 | **GENCODE v36**       | Lọc protein-coding genes | `gencode.v36.annotation.gtf`                                     |
 | **Chen et al. 2013**  | Loại CpG cross-reactive  | `cross_reactive_probes.txt`                                      |
-| **Illumina manifest** | Loại CpG trên chrX/Y     | `HumanMethylation450_manifest.csv`                               |
+| **Illumina 450K manifest** | Loại CpG trên chrX/Y (tiền xử lý) + CpG island edges (graph) | `HumanMethylation450_manifest.csv` |
 
 ---
 

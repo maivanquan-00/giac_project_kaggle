@@ -141,11 +141,27 @@ def build_hetero_graph(
             graph["mirna", "coregulates", "cpg"].edge_index   = mirna_cpg_edges
             print(f"   CpG↔miRNA edges : {cpg_mirna_edges.shape[1]:,}")
  
+    # ── Cạnh 7: CpG ↔ CpG (cùng CpG island) ─────────────────────────
+    if cfg_graph.get("use_cpg_island", False):
+        manifest_file = cfg_data.get("manifest_file", "")
+        if manifest_file:
+            island_edges = _load_cpg_island_edges(
+                manifest_file      = manifest_file,
+                cpg_idx            = cpg_idx,
+                relation_filter    = cfg_graph.get("cpg_island_relation", "Island"),
+                max_edges_per_node = cfg_graph.get("max_edges_per_node", 20),
+            )
+            if island_edges is not None:
+                graph["cpg", "sameisland", "cpg"].edge_index = island_edges
+                print(f"   CpG-Island edges: {island_edges.shape[1] // 2:,} unique")
+        else:
+            print("   ⚠️  use_cpg_island=true nhưng manifest_file chưa set trong config")
+
     # Self-loops
     graph["gene",  "self_loop", "gene"].edge_index  = _identity_edges(len(gene_names))
     graph["cpg",   "self_loop", "cpg"].edge_index   = _identity_edges(len(cpg_names))
     graph["mirna", "self_loop", "mirna"].edge_index = _identity_edges(len(mirna_names))
- 
+
     return graph.to(device)
  
  
@@ -522,6 +538,114 @@ def _load_reactome_edges(reactome_file, hgnc_file, gene_idx, max_pathway_size=50
     return torch.tensor([src_list, dst_list], dtype=torch.long)
  
  
+# ─────────────────────────────────────────────
+#  CpG island  (CpG ↔ CpG)
+# ─────────────────────────────────────────────
+
+def _load_cpg_island_edges(
+    manifest_file: str,
+    cpg_idx: dict,
+    relation_filter: str = "Island",   # "Island" | "Island+Shore" | "all"
+    max_edges_per_node: int = 20,
+) -> "torch.Tensor | None":
+    """
+    Đọc Illumina 450K manifest, tìm các CpG probe cùng UCSC CpG island,
+    thêm cạnh vô hướng giữa chúng.
+
+    relation_filter:
+        "Island"       — chỉ probes có Relation_to_UCSC_CpG_Island == "Island"
+        "Island+Shore" — Island + N_Shore + S_Shore
+        "all"          — mọi probe có UCSC_CpG_Islands_Name không rỗng
+    """
+    if not os.path.exists(manifest_file):
+        print("   ⚠️  Illumina manifest không tìm thấy")
+        return None
+
+    print("   Parsing Illumina 450K manifest...", end=" ", flush=True)
+
+    # File có header [Heading]/[Assay] — tìm dòng bắt đầu bằng "IlmnID"
+    skiprows = None
+    try:
+        with open(manifest_file, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if line.startswith("IlmnID"):
+                    skiprows = i
+                    break
+    except Exception as e:
+        print(f"lỗi đọc file: {e}")
+        return None
+
+    if skiprows is None:
+        print("   ⚠️  Không tìm thấy header IlmnID trong manifest")
+        return None
+
+    try:
+        df = pd.read_csv(
+            manifest_file,
+            skiprows=skiprows,
+            usecols=["Name", "UCSC_CpG_Islands_Name", "Relation_to_UCSC_CpG_Island"],
+            dtype=str,
+            encoding="utf-8",
+            errors="replace",
+            low_memory=False,
+        )
+    except Exception as e:
+        print(f"lỗi parse CSV: {e}")
+        return None
+
+    # Lọc theo relation
+    valid_relations: set
+    if relation_filter == "Island":
+        valid_relations = {"Island"}
+    elif relation_filter == "Island+Shore":
+        valid_relations = {"Island", "N_Shore", "S_Shore"}
+    else:
+        valid_relations = None  # type: ignore
+
+    df = df.dropna(subset=["UCSC_CpG_Islands_Name", "Relation_to_UCSC_CpG_Island"])
+    df = df[df["UCSC_CpG_Islands_Name"].str.strip() != ""]
+    if valid_relations is not None:
+        df = df[df["Relation_to_UCSC_CpG_Island"].str.strip().isin(valid_relations)]
+
+    # Group by island → list probe indices (chỉ giữ probe có trong cpg_idx)
+    island_to_cpg: dict[str, list[int]] = {}
+    for _, row in df.iterrows():
+        probe = str(row["Name"]).strip()
+        island = str(row["UCSC_CpG_Islands_Name"]).strip()
+        if probe in cpg_idx:
+            island_to_cpg.setdefault(island, []).append(cpg_idx[probe])
+
+    # Build edges với cap per-node
+    src_list, dst_list = [], []
+    seen: set[tuple[int, int]] = set()
+    edge_count: dict[int, int] = {}
+
+    for island, indices in island_to_cpg.items():
+        unique = list(set(indices))
+        if len(unique) < 2:
+            continue
+        for a in range(len(unique)):
+            for b in range(a + 1, len(unique)):
+                i1, i2 = unique[a], unique[b]
+                if edge_count.get(i1, 0) >= max_edges_per_node:
+                    continue
+                if edge_count.get(i2, 0) >= max_edges_per_node:
+                    continue
+                key = (min(i1, i2), max(i1, i2))
+                if key in seen:
+                    continue
+                seen.add(key)
+                src_list += [i1, i2]
+                dst_list += [i2, i1]
+                edge_count[i1] = edge_count.get(i1, 0) + 1
+                edge_count[i2] = edge_count.get(i2, 0) + 1
+
+    print(f"{len(src_list) // 2:,} unique CpG-island edges")
+    if not src_list:
+        return None
+    return torch.tensor([src_list, dst_list], dtype=torch.long)
+
+
 # ─────────────────────────────────────────────
 #  miRNA family  (miRNA ↔ miRNA)
 # ─────────────────────────────────────────────
