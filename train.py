@@ -219,10 +219,6 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     edge_stats = get_edge_stats(graph)
-    print(
-        f"\U0001f4ca Graph: {edge_stats['n_relations_active']}/{edge_stats['n_relations_total']} relations active, "
-        f"total {edge_stats['total_edges']:,} edges"
-    )
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
 
     # Class weight strategy:
@@ -312,11 +308,13 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         history["val_loss"].append(vl["loss"])
  
         if epoch % log_every == 0 or epoch == 1:
-            print(f"{fold_name} | Epoch {epoch:3d}/{cfg['training']['epochs']}")
-            print_metrics(tr, "Train")
-            print_metrics(vl, "Val  ")
             w = model.cross_attn.modality_weights.detach()
-            print(f"       modality_w: cpg={w[0]:.3f} mirna={w[1]:.3f}  |  val_loss={vl['loss']:.4f}")
+            print(
+                f"{fold_name} | Ep {epoch:3d}/{cfg['training']['epochs']}"
+                f" | train F1={tr['f1']:.4f}"
+                f" | val F1={vl['f1']:.4f} loss={vl['loss']:.4f}"
+                f" | mw=[c={w[0]:.2f},m={w[1]:.2f}]"
+            )
  
         improved = False
         if selection == "val_loss":
