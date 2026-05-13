@@ -73,8 +73,8 @@ training:
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"
-  log_interval: 25
-  print_classification_report: false
+  log_interval: 5
+  print_classification_report: true
 
 interpretability:
   top_k_features: 50
