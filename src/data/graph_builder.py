@@ -27,6 +27,43 @@ from torch_geometric.data import HeteroData
 def _uniform_attr(n_edges: int) -> torch.Tensor:
     """Edge attribute tensor of all 1.0 for relations without confidence scores."""
     return torch.ones((n_edges, 1), dtype=torch.float32)
+
+
+# 13 relations in fixed order. Use this list anywhere we need to enumerate them.
+RELATION_ORDER = [
+    (("cpg",   "regulates",    "gene"),  "→", "emQTL, w=-log10(p)/30"),
+    (("gene",  "regulated_by", "cpg"),   "→", "emQTL reverse"),
+    (("gene",  "ppi",          "gene"),  "↔", "STRING, w=score/1000"),
+    (("mirna", "targets",      "gene"),  "→", "miRTarBase"),
+    (("gene",  "targeted_by",  "mirna"), "→", "miRTarBase reverse"),
+    (("gene",  "copathway",    "gene"),  "↔", "Reactome co-pathway"),
+    (("mirna", "samefamily",   "mirna"), "↔", "TargetScan family"),
+    (("cpg",   "coregulates",  "mirna"), "→", "shared gene targets, derived"),
+    (("mirna", "coregulates",  "cpg"),   "→", "reverse"),
+    (("cpg",   "sameisland",   "cpg"),   "↔", "Illumina manifest"),
+    (("gene",  "self_loop",    "gene"),  "↔", "identity"),
+    (("cpg",   "self_loop",    "cpg"),   "↔", "identity"),
+    (("mirna", "self_loop",    "mirna"), "↔", "identity"),
+]
+
+
+def _print_relation_summary(graph) -> None:
+    """Numbered table of all 13 declared relations with edge counts."""
+    print("\n📋 Graph relations (13 declared):")
+    total = 0
+    n_active = 0
+    for i, (et, arrow, desc) in enumerate(RELATION_ORDER, start=1):
+        src, rel, dst = et
+        ei = graph[et].edge_index if et in graph.edge_index_dict else None
+        n_edges = int(ei.shape[1]) if ei is not None else 0
+        marker = "✓" if n_edges > 0 else "✗"
+        rel_str = f"{src:5s} {arrow}{rel:15s}{arrow} {dst:5s}"
+        print(f"   [{i:2d}] {marker} {rel_str}  ({desc:32s}) : {n_edges:>8,} edges")
+        total += n_edges
+        if n_edges > 0:
+            n_active += 1
+    print(f"   {'─' * 86}")
+    print(f"   Total: {n_active}/13 active, {total:,} edges")
  
  
 def build_hetero_graph(
@@ -176,6 +213,7 @@ def build_hetero_graph(
         graph[nt, "self_loop", nt].edge_index = ei
         graph[nt, "self_loop", nt].edge_attr  = _uniform_attr(count)
 
+    _print_relation_summary(graph)
     return graph.to(device)
 
 

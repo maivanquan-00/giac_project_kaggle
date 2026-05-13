@@ -94,7 +94,9 @@ class MultiOmicGATModule(nn.Module):
                 attr = torch.ones((ei.shape[1], 1), dtype=torch.float32, device=ei.device)
             edge_attr_dict[k] = attr
         for i in range(self.n_layers):
-            out = self.convs[i](x_dict, present, edge_attr=edge_attr_dict)
+            # HeteroConv requires kwargs to end with '_dict' — it strips the suffix
+            # before passing to each underlying GATv2Conv (which receives `edge_attr`).
+            out = self.convs[i](x_dict, present, edge_attr_dict=edge_attr_dict)
             x_dict = {
                 t: self.layer_norms[i][t](h + F.elu(self.dropout(out.get(t, h))))
                 for t, h in x_dict.items()
