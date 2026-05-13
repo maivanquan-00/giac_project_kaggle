@@ -28,7 +28,7 @@ graph:
   use_mirna_family: true
   reactome_max_pathway_size: 50
   max_targets_per_mirna:    100
-  use_cpg_island:      false
+  use_cpg_island:      true
   cpg_island_relation: "Island"
 
 model:
