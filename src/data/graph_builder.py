@@ -15,12 +15,18 @@ Nguyên tắc matching tên:
     - Đảm bảo match nhất quán dù CSV dùng mixed case
 """
  
+import math
 import re
 import os
 import numpy as np
 import pandas as pd
 import torch
 from torch_geometric.data import HeteroData
+
+
+def _uniform_attr(n_edges: int) -> torch.Tensor:
+    """Edge attribute tensor of all 1.0 for relations without confidence scores."""
+    return torch.ones((n_edges, 1), dtype=torch.float32)
  
  
 def build_hetero_graph(
@@ -52,59 +58,61 @@ def build_hetero_graph(
     graph["cpg"].num_nodes   = len(cpg_names)
     graph["mirna"].num_nodes = len(mirna_names)
  
-    # ── Cạnh 1: CpG → Gene  (emQTL) ──────────────────────────────────
-    cpg_gene_edges = _load_emqtl_edges(
+    # ── Cạnh 1: CpG → Gene  (emQTL, weighted by -log10(p)) ───────────
+    cpg_gene_edges, cpg_gene_attr = _load_emqtl_edges(
         giac_dir     = giac_dir,
         cancer_types = cfg_data["cancer_types"],
         cpg_idx      = cpg_idx,
-        gene_idx     = gene_idx,   # UPPER keys
+        gene_idx     = gene_idx,
         pval_thresh  = cfg_graph["emqtl_pval_threshold"],
         max_edges    = cfg_graph["max_edges_per_node"],
     )
     if cpg_gene_edges is not None:
         graph["cpg", "regulates", "gene"].edge_index    = cpg_gene_edges
+        graph["cpg", "regulates", "gene"].edge_attr     = cpg_gene_attr
         graph["gene", "regulated_by", "cpg"].edge_index = cpg_gene_edges.flip(0)
+        graph["gene", "regulated_by", "cpg"].edge_attr  = cpg_gene_attr
         print(f"   CpG→Gene edges  : {cpg_gene_edges.shape[1]:,}")
     else:
-        print("   ⚠️  emQTL: không có cạnh → dùng self-loop fallback")
-        dummy = _self_loop_edges(len(cpg_names), len(gene_names))
-        graph["cpg", "regulates", "gene"].edge_index    = dummy
-        graph["gene", "regulated_by", "cpg"].edge_index = dummy.flip(0)
- 
-    # ── Cạnh 2: Gene ↔ Gene  (STRING PPI) ────────────────────────────
+        print("   ⚠️  emQTL: không có cạnh")
+
+    # ── Cạnh 2: Gene ↔ Gene  (STRING PPI, weighted by score/1000) ────
     if cfg_graph.get("use_ppi", True):
         alias_file = os.path.join(graph_dir, "9606.protein.aliases.v12.0.txt")
         links_file = os.path.join(graph_dir, "9606.protein.links.v12.0.txt")
-        ppi_edges  = _load_ppi_edges(
+        ppi_edges, ppi_attr = _load_ppi_edges(
             links_file   = links_file,
             alias_file   = alias_file,
-            gene_idx     = gene_idx,   # UPPER keys
+            gene_idx     = gene_idx,
             score_thresh = cfg_graph.get("ppi_score_threshold", 700),
         )
         if ppi_edges is not None:
             graph["gene", "ppi", "gene"].edge_index = ppi_edges
+            graph["gene", "ppi", "gene"].edge_attr  = ppi_attr
             print(f"   Gene↔Gene edges : {ppi_edges.shape[1]:,}")
         else:
             print("   ⚠️  STRING PPI: không đọc được file")
- 
-    # ── Cạnh 3: miRNA → Gene  (hsa_MTI.csv) ──────────────────────────
+
+    # ── Cạnh 3: miRNA → Gene  (hsa_MTI.csv, uniform 1.0) ─────────────
+    mirna_edges = None
     if cfg_graph.get("use_mirna", True):
         mti_file    = os.path.join(graph_dir, "hsa_MTI.csv")
         mirna_edges = _load_mirna_edges(
             mti_file             = mti_file,
-            mirna_idx            = mirna_idx,   # lowercase keys
-            gene_idx             = gene_idx,    # UPPER keys
+            mirna_idx            = mirna_idx,
+            gene_idx             = gene_idx,
             max_targets_per_mirna = cfg_graph.get("max_targets_per_mirna", 50),
         )
         if mirna_edges is not None:
             graph["mirna", "targets", "gene"].edge_index    = mirna_edges
+            graph["mirna", "targets", "gene"].edge_attr     = _uniform_attr(mirna_edges.shape[1])
             graph["gene", "targeted_by", "mirna"].edge_index = mirna_edges.flip(0)
+            graph["gene", "targeted_by", "mirna"].edge_attr  = _uniform_attr(mirna_edges.shape[1])
             print(f"   miRNA→Gene edges: {mirna_edges.shape[1]:,}")
         else:
             print("   ⚠️  miRTarBase: không đọc được file")
- 
- 
-    # ── Cạnh 4: Gene ↔ Gene (Reactome co-pathway) ────────────────────
+
+    # ── Cạnh 4: Gene ↔ Gene (Reactome co-pathway, uniform 1.0) ───────
     if cfg_graph.get("use_reactome", True):
         reactome_edges = _load_reactome_edges(
             reactome_file    = os.path.join(graph_dir, "Ensembl2Reactome_All_Levels.txt"),
@@ -115,19 +123,21 @@ def build_hetero_graph(
         )
         if reactome_edges is not None:
             graph["gene", "copathway", "gene"].edge_index = reactome_edges
+            graph["gene", "copathway", "gene"].edge_attr  = _uniform_attr(reactome_edges.shape[1])
             print(f"   Gene-Pathway edges : {reactome_edges.shape[1] // 2:,} unique")
- 
-    # ── Cạnh 5: miRNA ↔ miRNA (same seed family) ─────────────────────
+
+    # ── Cạnh 5: miRNA ↔ miRNA (same seed family, uniform 1.0) ────────
     if cfg_graph.get("use_mirna_family", True):
         family_edges = _load_mirna_family_edges(
             family_file = os.path.join(graph_dir, "miR_Family_Info.txt"),
-            mirna_idx   = mirna_idx,   # lowercase keys
+            mirna_idx   = mirna_idx,
         )
         if family_edges is not None:
             graph["mirna", "samefamily", "mirna"].edge_index = family_edges
+            graph["mirna", "samefamily", "mirna"].edge_attr  = _uniform_attr(family_edges.shape[1])
             print(f"   miRNA-Family edges : {family_edges.shape[1] // 2:,} unique")
- 
-    # ── Cạnh 6: CpG ↔ miRNA (co-regulation qua gene trung gian) ───────
+
+    # ── Cạnh 6: CpG ↔ miRNA (co-regulation, uniform 1.0) ─────────────
     if cpg_gene_edges is not None and mirna_edges is not None:
         cpg_mirna_edges, mirna_cpg_edges = _build_coregulation_edges(
             cpg_gene_edges   = cpg_gene_edges,
@@ -138,10 +148,12 @@ def build_hetero_graph(
         )
         if cpg_mirna_edges is not None:
             graph["cpg",   "coregulates", "mirna"].edge_index = cpg_mirna_edges
+            graph["cpg",   "coregulates", "mirna"].edge_attr  = _uniform_attr(cpg_mirna_edges.shape[1])
             graph["mirna", "coregulates", "cpg"].edge_index   = mirna_cpg_edges
+            graph["mirna", "coregulates", "cpg"].edge_attr    = _uniform_attr(mirna_cpg_edges.shape[1])
             print(f"   CpG↔miRNA edges : {cpg_mirna_edges.shape[1]:,}")
- 
-    # ── Cạnh 7: CpG ↔ CpG (cùng CpG island) ─────────────────────────
+
+    # ── Cạnh 7: CpG ↔ CpG (cùng CpG island, uniform 1.0) ─────────────
     if cfg_graph.get("use_cpg_island", False):
         manifest_file = cfg_data.get("manifest_file", "")
         if manifest_file:
@@ -153,16 +165,41 @@ def build_hetero_graph(
             )
             if island_edges is not None:
                 graph["cpg", "sameisland", "cpg"].edge_index = island_edges
+                graph["cpg", "sameisland", "cpg"].edge_attr  = _uniform_attr(island_edges.shape[1])
                 print(f"   CpG-Island edges: {island_edges.shape[1] // 2:,} unique")
         else:
             print("   ⚠️  use_cpg_island=true nhưng manifest_file chưa set trong config")
 
-    # Self-loops
-    graph["gene",  "self_loop", "gene"].edge_index  = _identity_edges(len(gene_names))
-    graph["cpg",   "self_loop", "cpg"].edge_index   = _identity_edges(len(cpg_names))
-    graph["mirna", "self_loop", "mirna"].edge_index = _identity_edges(len(mirna_names))
+    # Self-loops (uniform 1.0)
+    for nt, count in [("gene", len(gene_names)), ("cpg", len(cpg_names)), ("mirna", len(mirna_names))]:
+        ei = _identity_edges(count)
+        graph[nt, "self_loop", nt].edge_index = ei
+        graph[nt, "self_loop", nt].edge_attr  = _uniform_attr(count)
 
     return graph.to(device)
+
+
+def get_edge_stats(graph) -> dict:
+    """Per-relation edge counts from a HeteroData graph.
+
+    Returns dict with `per_relation`, `total_edges`, `n_relations_total`,
+    `n_relations_active`. Use to audit which of the 13 declared relations
+    actually carry edges in a given fold.
+    """
+    per_rel = {}
+    total = 0
+    for et, ei in graph.edge_index_dict.items():
+        rel = f"{et[0]}-{et[1]}-{et[2]}"
+        n = int(ei.shape[1]) if ei is not None else 0
+        per_rel[rel] = n
+        total += n
+    n_active = sum(1 for v in per_rel.values() if v > 0)
+    return {
+        "per_relation": per_rel,
+        "total_edges": total,
+        "n_relations_total": len(per_rel),
+        "n_relations_active": n_active,
+    }
  
  
 # ─────────────────────────────────────────────
@@ -175,31 +212,35 @@ def _load_emqtl_edges(
     gene_idx: dict,   # UPPER keys
     pval_thresh: float,
     max_edges: int,
-) -> torch.Tensor | None:
- 
-    src_list, dst_list = [], []
+):
+    """Load CpG → Gene edges from TCGA emQTL files.
+
+    Returns (edge_index, edge_attr) where edge_attr = -log10(p) / 30 clipped to [0, 1],
+    so higher confidence = closer to 1.0. Returns (None, None) when no edges.
+    """
+    src_list, dst_list, w_list = [], [], []
     cpg_edge_count = {}
- 
+
     for ct in cancer_types:
         fpath = os.path.join(giac_dir, f"TCGA_emQTL_{ct}.txt")
         if not os.path.exists(fpath):
             print(f"   ⚠️  Không tìm thấy: TCGA_emQTL_{ct}.txt")
             continue
- 
+
         header_df = pd.read_csv(fpath, sep="\t", nrows=2)
         cols = header_df.columns.tolist()
- 
+
         cpg_col  = _find_col(cols, ["CpG", "cpg", "probe", "Probe"])
         gene_col = _find_col(cols, ["Gene", "gene", "symbol", "Symbol"])
         pval_col = _find_col(cols, ["p-value", "pvalue", "p_value", "P.Value", "pval"])
- 
+
         if not all([cpg_col, gene_col, pval_col]):
             print(f"   ⚠️  {ct}: không nhận ra cột (found: {cols[:5]})")
             continue
- 
+
         print(f"   Parsing emQTL {ct}... ", end="", flush=True)
         count_before = len(src_list)
- 
+
         for chunk in pd.read_csv(
             fpath, sep="\t", chunksize=200_000,
             usecols=[cpg_col, gene_col, pval_col],
@@ -207,23 +248,29 @@ def _load_emqtl_edges(
         ):
             chunk = chunk[chunk[pval_col] < pval_thresh]
             for row in chunk.itertuples(index=False, name=None):
-                c_name = str(row[0]).strip()          # CpG: giữ nguyên
-                g_name = str(row[1]).strip().upper()  # Gene: normalize UPPER
- 
+                c_name = str(row[0]).strip()
+                g_name = str(row[1]).strip().upper()
+                pval   = float(row[2])
+
                 if c_name not in cpg_idx or g_name not in gene_idx:
                     continue
                 c_i = cpg_idx[c_name]
                 if cpg_edge_count.get(c_i, 0) >= max_edges:
                     continue
+                # Confidence: -log10(p) clipped at 30 (= p≤1e-30), normalize to [0,1]
+                w = min(-math.log10(max(pval, 1e-30)), 30.0) / 30.0
                 src_list.append(c_i)
                 dst_list.append(gene_idx[g_name])
+                w_list.append(w)
                 cpg_edge_count[c_i] = cpg_edge_count.get(c_i, 0) + 1
- 
+
         print(f"{len(src_list) - count_before:,} edges")
- 
+
     if not src_list:
-        return None
-    return torch.tensor([src_list, dst_list], dtype=torch.long)
+        return None, None
+    edge_index = torch.tensor([src_list, dst_list], dtype=torch.long)
+    edge_attr = torch.tensor(w_list, dtype=torch.float32).unsqueeze(-1)
+    return edge_index, edge_attr
  
  
 # ─────────────────────────────────────────────
@@ -234,62 +281,67 @@ def _load_ppi_edges(
     alias_file: str,
     gene_idx: dict,   # UPPER keys
     score_thresh: int = 700,
-) -> torch.Tensor | None:
- 
+):
+    """Load STRING PPI edges with combined_score as confidence.
+
+    Returns (edge_index, edge_attr) where edge_attr = combined_score / 1000
+    (range [0, 1], threshold cuts at score_thresh / 1000).
+    """
     if not os.path.exists(links_file) or not os.path.exists(alias_file):
-        return None
- 
+        return None, None
+
     print("   Building ENSP→symbol map từ alias file...", end=" ", flush=True)
- 
+
     alias_df = pd.read_csv(alias_file, sep="\t", comment="#",
                            names=["protein_id", "alias", "source"])
- 
-    # Normalize alias về UPPER để match gene_idx (đã là UPPER keys)
+
     alias_df["alias_upper"] = alias_df["alias"].astype(str).str.strip().str.upper()
- 
-    # Chỉ giữ alias khớp với gene_idx (đã UPPER)
-    valid_genes = set(gene_idx.keys())  # UPPER set
+    valid_genes = set(gene_idx.keys())
     preferred   = alias_df[alias_df["alias_upper"].isin(valid_genes)]
- 
+
     ensp_to_gene = (
         preferred.groupby("protein_id")["alias_upper"]
         .first()
         .to_dict()
-    )  # ENSP → UPPER gene symbol
+    )
     print(f"{len(ensp_to_gene):,} proteins mapped")
- 
+
     print("   Parsing STRING links...", end=" ", flush=True)
-    src_list, dst_list = [], []
+    src_list, dst_list, w_list = [], [], []
     seen = set()
- 
+
     for chunk in pd.read_csv(
         links_file, sep=" ", chunksize=500_000,
         dtype={"protein1": str, "protein2": str, "combined_score": int},
     ):
         chunk = chunk[chunk["combined_score"] >= score_thresh]
         for row in chunk.itertuples(index=False, name=None):
-            p1, p2 = row[0], row[1]
+            p1, p2, score = row[0], row[1], int(row[2])
             g1 = ensp_to_gene.get(p1, "")
             g2 = ensp_to_gene.get(p2, "")
- 
+
             if not g1 or not g2:
                 continue
             if g1 not in gene_idx or g2 not in gene_idx:
                 continue
- 
+
             i1, i2 = gene_idx[g1], gene_idx[g2]
             key = (min(i1, i2), max(i1, i2))
             if key in seen:
                 continue
             seen.add(key)
+            w = score / 1000.0
             src_list += [i1, i2]
             dst_list += [i2, i1]
- 
+            w_list += [w, w]
+
     print(f"{len(src_list)//2:,} unique edges")
- 
+
     if not src_list:
-        return None
-    return torch.tensor([src_list, dst_list], dtype=torch.long)
+        return None, None
+    edge_index = torch.tensor([src_list, dst_list], dtype=torch.long)
+    edge_attr = torch.tensor(w_list, dtype=torch.float32).unsqueeze(-1)
+    return edge_index, edge_attr
  
  
 # ─────────────────────────────────────────────
@@ -460,11 +512,6 @@ def _find_col(columns: list, candidates: list) -> str | None:
             if cand.lower() == c or cand.lower() in c:
                 return columns[i]
     return None
- 
- 
-def _self_loop_edges(n_src: int, n_dst: int, n: int = 500) -> torch.Tensor:
-    """Empty edge_index fallback when emQTL miss — KHÔNG sinh edges ngẫu nhiên."""
-    return torch.zeros((2, 0), dtype=torch.long)
  
  
 def _identity_edges(n_nodes: int) -> torch.Tensor:

@@ -10,12 +10,16 @@ def _make_hetero_conv(hidden_dim: int, n_heads: int, dropout: float) -> HeteroCo
     head_dim = hidden_dim // n_heads
 
     def bip():
+        # edge_dim=1 → GATv2 sẽ nhận edge_attr (-log10(p) cho emQTL,
+        # uniform 1.0 cho relations khác) và đưa vào attention.
         return GATv2Conv((hidden_dim, hidden_dim), head_dim,
-                         heads=n_heads, add_self_loops=False, dropout=dropout)
+                         heads=n_heads, add_self_loops=False,
+                         dropout=dropout, edge_dim=1)
 
     def hom():
         return GATv2Conv(hidden_dim, head_dim,
-                         heads=n_heads, add_self_loops=False, dropout=dropout)
+                         heads=n_heads, add_self_loops=False,
+                         dropout=dropout, edge_dim=1)
 
     return HeteroConv({
         ("cpg",   "regulates",    "gene"):  bip(),
@@ -79,8 +83,18 @@ class MultiOmicGATModule(nn.Module):
         x_dict = {k: self.node_emb[k] for k in ["gene", "cpg", "mirna"]}
 
         present = {k: v for k, v in graph.edge_index_dict.items() if v.shape[1] > 0}
+        # Edge attributes (-log10(p) for emQTL, score/1000 for PPI, uniform 1.0 elsewhere).
+        # HeteroConv splits this dict by edge_type and passes `edge_attr=<tensor>` to each conv.
+        # GATv2Conv was built with edge_dim=1, so every present relation MUST have edge_attr;
+        # fall back to uniform 1.0 if missing to keep training robust.
+        edge_attr_dict = {}
+        for k, ei in present.items():
+            attr = getattr(graph[k], "edge_attr", None)
+            if attr is None:
+                attr = torch.ones((ei.shape[1], 1), dtype=torch.float32, device=ei.device)
+            edge_attr_dict[k] = attr
         for i in range(self.n_layers):
-            out = self.convs[i](x_dict, present)
+            out = self.convs[i](x_dict, present, edge_attr=edge_attr_dict)
             x_dict = {
                 t: self.layer_norms[i][t](h + F.elu(self.dropout(out.get(t, h))))
                 for t, h in x_dict.items()

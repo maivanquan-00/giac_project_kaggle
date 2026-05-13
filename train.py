@@ -5,15 +5,16 @@ Train GIAC with either a single split or stratified cross-validation.
 """
  
 import argparse
+import json
 import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 import yaml
 from sklearn.metrics import f1_score
- 
-from src.data.dataset import build_cv_datasets, build_datasets
-from src.data.graph_builder import build_hetero_graph
+
+from src.data.dataset import build_cv_datasets, build_datasets, build_fixed_cohort_test_datasets
+from src.data.graph_builder import build_hetero_graph, get_edge_stats
 from src.model import GIACModel
 from src.utils import (
     EarlyStopping, compute_metrics, compute_per_cancer_type_f1, ensure_dir,
@@ -217,6 +218,11 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         class_sampling_power=cfg["training"].get("class_sampling_power", 1.0),
     )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
+    edge_stats = get_edge_stats(graph)
+    print(
+        f"\U0001f4ca Graph: {edge_stats['n_relations_active']}/{edge_stats['n_relations_total']} relations active, "
+        f"total {edge_stats['total_edges']:,} edges"
+    )
     model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
 
     # Class weight strategy:
@@ -283,6 +289,8 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         title=f"{fold_name} - Class Distribution",
         class_names=subtype_names[:cfg["model"]["num_classes"]],
     )
+    with open(os.path.join(viz_dir, "edge_stats.json"), "w", encoding="utf-8") as f:
+        json.dump(edge_stats, f, indent=2)
  
     for epoch in range(1, cfg["training"]["epochs"] + 1):
         tr = train_epoch(
@@ -507,8 +515,15 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\U0001f5a5\ufe0f  Device: {device}  |  Seed: {seed}")
 
+    test_cohort = cfg.get("data", {}).get("test_cohort")
     cv_folds = args.cv_folds or cfg.get("preprocessing", {}).get("cv_folds", 5)
-    if cv_folds and cv_folds > 1:
+
+    if test_cohort:
+        datasets, feature_names, dims, metadata = build_fixed_cohort_test_datasets(cfg, seed)
+        print(f"\n\U0001f4d0 Dims: gene={dims['gene']}, meth={dims['meth']}, mirna={dims['mirna']}")
+        fit_one_split(cfg, datasets, feature_names, dims, metadata, device,
+                      f"Fixed-test {test_cohort}")
+    elif cv_folds and cv_folds > 1:
         fold_packages = build_cv_datasets(cfg, seed, n_splits=cv_folds)
         results = []
         for fp in fold_packages:

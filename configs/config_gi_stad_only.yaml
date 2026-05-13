@@ -4,6 +4,7 @@
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
   cancer_types: ["STAD"]   # chỉ STAD — vừa filter samples, vừa chọn emQTL file
 
 preprocessing:
@@ -29,6 +30,8 @@ graph:
   use_mirna_family: true
   reactome_max_pathway_size: 50
   max_targets_per_mirna:    100
+  use_cpg_island:      true   # sync GI combined: 13 relations
+  cpg_island_relation: "Island+Shore"
 
 model:
   hidden_dim:  64

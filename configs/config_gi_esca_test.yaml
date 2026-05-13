@@ -1,8 +1,13 @@
+# GI MoXGATE-style evaluation: train on COAD+READ+STAD, test on ESCA
+# Reproduces the fixed-cohort split used in arXiv:2506.06980 for direct comparison.
+# Single-split (no CV) — val carved out of trainval by val_size.
+
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
-  cancer_types: ["COAD", "ESCA", "READ", "STAD"]
-  exclude_subtypes: [3]   # Loại HM-SNV (n=19, quá ít cho reliable 5-fold CV)
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
+  cancer_types: ["COAD", "ESCA", "READ", "STAD"]   # load all 4
+  test_cohort: "ESCA"                              # ESCA = held-out test
 
 preprocessing:
   gene_top_k:   3500
@@ -10,11 +15,12 @@ preprocessing:
   mirna_top_k:  null
   feature_selection_method: "anova"
   val_size:  0.15
-  cv_folds:  5
+  cv_folds:  0                          # ignored when test_cohort is set
   minority_boost_gene:  300
   minority_boost_meth:  200
   minority_boost_mirna: 0
-  minority_classes: [1, 3]   # GS=1, EBV=3 (sau remap: old EBV=4 → new EBV=3)
+  minority_classes: [1, 3, 4]
+  stratify_by_cancer_type: true
 
 graph:
   emqtl_pval_threshold:    0.05
@@ -27,6 +33,8 @@ graph:
   use_mirna_family: true
   reactome_max_pathway_size: 50
   max_targets_per_mirna:    100
+  use_cpg_island:      true
+  cpg_island_relation: "Island+Shore"
 
 model:
   hidden_dim:  64
@@ -37,7 +45,7 @@ model:
   ca_heads:    4
   ca_dropout:  0.4
   sparsemax_alpha: 1.5
-  num_classes: 4
+  num_classes: 5
   classifier_dropout: 0.5
   final_dim:   32
 
@@ -53,7 +61,7 @@ training:
   weight_decay:          5.0e-3
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
-  focal_alpha:     [1.0, 4.5, 1.5, 2.0]   # placeholder, sẽ bị override bởi auto compute
+  focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
   label_smoothing: 0.05
   balanced_sampler: false
   lambda_frobenius: 0.002
@@ -61,14 +69,14 @@ training:
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
-  subtype_names: ["CIN", "GS", "MSI", "EBV"]
+  subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
   minority_augmentation:
     enabled: true
-    class: [1, 3]   # GS=1, EBV=3 (new label sau remap)
+    class: [1, 3, 4]
     noise_std: 0.10
 
 logging:
-  save_dir:     "/kaggle/working/checkpoints_gi_4class/"
+  save_dir:     "/kaggle/working/checkpoints_gi_esca_test/"
   log_interval: 5
 
 interpretability:

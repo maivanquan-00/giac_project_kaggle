@@ -66,6 +66,58 @@ def build_datasets(cfg: dict, seed: int = 42):
     return _package_split(raw, idx_train, idx_val, idx_test, split_cfg)
 
 
+def build_fixed_cohort_test_datasets(cfg: dict, seed: int = 42):
+    """Build a fixed-cohort test split for MoXGATE-style evaluation.
+
+    Train+val on cohorts != test_cohort, test on test_cohort. Requires
+    `data.test_cohort` in config and `Cancer_Type` column in labels.
+    Example: test_cohort='ESCA' → train on COAD+READ+STAD, test on ESCA.
+    """
+    raw = load_aligned_data(cfg)
+    split_cfg = _get_preprocess_cfg(cfg)
+
+    test_cohort = cfg.get("data", {}).get("test_cohort")
+    if not test_cohort:
+        raise ValueError("data.test_cohort must be set for fixed-cohort split")
+    if raw.get("cancer_types") is None:
+        raise ValueError(
+            "Fixed-cohort split requires Cancer_Type column in labels"
+        )
+
+    cancer_types = raw["cancer_types"]
+    test_mask = cancer_types == test_cohort
+    if not test_mask.any():
+        available = sorted(set(cancer_types.tolist()))
+        raise ValueError(
+            f"No samples with Cancer_Type={test_cohort}. Available: {available}"
+        )
+
+    idx_test = np.where(test_mask)[0]
+    idx_trainval = np.where(~test_mask)[0]
+
+    inner_stratify = _make_stratify_targets(
+        labels=raw["labels"][idx_trainval],
+        cancer_types=cancer_types[idx_trainval],
+        min_count=2,
+        enabled=split_cfg.get("stratify_by_cancer_type", True),
+        context="fixed-cohort inner val",
+    )
+    idx_train, idx_val = train_test_split(
+        idx_trainval,
+        test_size=split_cfg["val_size"],
+        random_state=seed,
+        stratify=inner_stratify,
+    )
+    test_dist = dict(zip(*np.unique(raw["labels"][idx_test], return_counts=True)))
+    print(
+        f"\n📊 Fixed-cohort split (test={test_cohort}): "
+        f"train={len(idx_train)}, val={len(idx_val)}, test={len(idx_test)}"
+    )
+    print(f"  Test subtype dist: {test_dist}")
+
+    return _package_split(raw, idx_train, idx_val, idx_test, split_cfg)
+
+
 def build_cv_datasets(cfg: dict, seed: int = 42, n_splits: int | None = None):
     """Build stratified CV folds. Each fold still keeps an inner validation split."""
     raw = load_aligned_data(cfg)
