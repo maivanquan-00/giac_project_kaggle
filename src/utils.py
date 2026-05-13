@@ -99,7 +99,6 @@ def save_confusion_matrix_csv(y_true, y_pred, path, class_names=None):
     )
     ensure_dir(os.path.dirname(path))
     df.to_csv(path)
-    print(f"  📄 Confusion matrix (absolute) saved: {path}")
 
 
 def ensure_dir(path: str):
@@ -227,7 +226,6 @@ def save_checkpoint(model, optimizer, epoch, metrics, path, extra_state=None):
     if extra_state:
         state.update(extra_state)
     torch.save(state, path)
-    print(f"  💾 Saved checkpoint: {path}")
 
 
 def load_checkpoint(model, optimizer, path, device):

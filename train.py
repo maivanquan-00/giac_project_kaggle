@@ -304,11 +304,13 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         history["val_loss"].append(vl["loss"])
  
         if epoch % log_every == 0 or epoch == 1:
-            print(f"{fold_name} | Epoch {epoch:3d}/{cfg['training']['epochs']}")
-            print_metrics(tr, "Train")
-            print_metrics(vl, "Val  ")
             w = model.cross_attn.modality_weights.detach()
-            print(f"       modality_w: cpg={w[0]:.3f} mirna={w[1]:.3f}  |  val_loss={vl['loss']:.4f}")
+            print(
+                f"{fold_name} | Ep {epoch:3d}/{cfg['training']['epochs']} "
+                f"trainF1={tr['f1']:.4f} valF1={vl['f1']:.4f} "
+                f"valLoss={vl['loss']:.4f} "
+                f"w(cpg/mirna)={w[0]:.3f}/{w[1]:.3f}"
+            )
  
         improved = False
         if selection == "val_loss":
@@ -348,36 +350,43 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     test_m_cal = compute_metrics(test_labels, test_preds_cal.tolist())
     per_class_f1_cal = compute_per_class_f1(test_labels, test_preds_cal.tolist(), num_classes)
  
-    print(f"\n\U0001f4ca Test - {fold_name}")
-    offset_str = "  ".join(f"{o:+.3f}" for o in offsets)
-    print(f"\U0001f4d0 Threshold offsets [{offset_str}]")
-    print_metrics(test_m,     "Raw  ")
-    print_metrics(test_m_cal, "Cal  ")
     gain = test_m_cal["f1"] - test_m["f1"]
-    print(f"\u2705 Best val F1: {best_f1:.4f}  |  Calibration gain: {gain:+.4f}")
-    print(f"\u2705 Test F1  raw={test_m['f1']:.4f}  cal={test_m_cal['f1']:.4f}")
+    print(
+        f"\n📊 {fold_name} | bestValF1={best_f1:.4f} "
+        f"testF1={test_m['f1']:.4f} calF1={test_m_cal['f1']:.4f} "
+        f"F1w={test_m['f1_weighted']:.4f} acc={test_m['accuracy']:.4f} "
+        f"calGain={gain:+.4f}"
+    )
  
     plot_training_curves(history, path=os.path.join(viz_dir, "training_curves.png"), title=fold_name)
     plot_confusion_matrix_figure(test_labels, test_preds,
         path=os.path.join(viz_dir, "confusion_matrix_test.png"),
         title=f"{fold_name} - Test",
         class_names=subtype_names[:cfg["model"]["num_classes"]], normalize=True)
-    print(f"\n\U0001f4cb Classification Report - {fold_name}")
-    print_classification_report(test_labels, test_preds,
-                                class_names=subtype_names[:cfg["model"]["num_classes"]])
-    print(f"\n🎯 Per-class F1 - {fold_name}  (raw → calibrated)")
-    for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]]):
-        raw = per_class_f1[idx]
-        cal = per_class_f1_cal[idx]
-        print(f"   {idx}:{name:<8s}  {raw:.4f} → {cal:.4f}  ({cal-raw:+.4f})")
+    if cfg["logging"].get("print_classification_report", False):
+        print(f"\n\U0001f4cb Classification Report - {fold_name}")
+        print_classification_report(test_labels, test_preds,
+                                    class_names=subtype_names[:cfg["model"]["num_classes"]])
+    per_class_line = "  ".join(
+        f"{name}={per_class_f1[idx]:.3f}"
+        for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]])
+    )
+    per_class_cal_line = "  ".join(
+        f"{name}={per_class_f1_cal[idx]:.3f}"
+        for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]])
+    )
+    print(f"   Per-class raw: {per_class_line}")
+    print(f"   Per-class cal: {per_class_cal_line}")
     save_confusion_matrix_csv(test_labels, test_preds,
         path=os.path.join(viz_dir, "confusion_matrix_test_absolute.csv"),
         class_names=subtype_names[:cfg["model"]["num_classes"]])
  
     attn = collect_attn_stats(model, test_loader, graph, device)
-    print(f"\n\U0001f50d Attention Stats - {fold_name}")
-    print(f"   cpg  : std={attn['cpg_std']:.4f}  max={attn['cpg_max']:.4f}  nnz={attn['cpg_nnz']:.3f}  global_w={attn['modality_w_cpg']:.3f}")
-    print(f"   mirna: std={attn['mirna_std']:.4f}  max={attn['mirna_max']:.4f}  nnz={attn['mirna_nnz']:.3f}  global_w={attn['modality_w_mirna']:.3f}")
+    print(
+        f"   Attention: cpg_w={attn['modality_w_cpg']:.3f} "
+        f"mirna_w={attn['modality_w_mirna']:.3f} "
+        f"cpg_nnz={attn['cpg_nnz']:.3f} mirna_nnz={attn['mirna_nnz']:.3f}"
+    )
  
     # Per-cancer-type F1 breakdown (for multi-cancer datasets like GI)
     per_ct_f1 = {}
@@ -385,10 +394,11 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     if test_cancer_types is not None and len(set(test_cancer_types)) > 0:
         per_ct_f1 = compute_per_cancer_type_f1(test_labels, test_preds, test_cancer_types)
         if len(per_ct_f1) > 1:
-            print(f"\n\U0001f9ec Per-cancer-type F1 - {fold_name}")
-            print(f"   {'Cancer':>8}  {'N':>5}  {'F1':>6}")
-            for ct, info in sorted(per_ct_f1.items()):
-                print(f"   {ct:>8}  {info['n']:>5}  {info['f1']:.4f}")
+            ct_line = "  ".join(
+                f"{ct}={info['f1']:.3f}(n={info['n']})"
+                for ct, info in sorted(per_ct_f1.items())
+            )
+            print(f"   Per-cancer: {ct_line}")
 
     # Train F1 at the epoch of best val F1 — overfit indicator
     train_f1_at_best = None
