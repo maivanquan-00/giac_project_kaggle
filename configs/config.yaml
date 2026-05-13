@@ -56,10 +56,9 @@ training:
   weight_decay:          5.0e-3   # Stage 2A: tăng từ 3e-3 (chống overfit train F1=0.93)
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
-  focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
+  focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]   # overridden at runtime by compute_class_weights (unless use_manual_focal_alpha=true)
   label_smoothing: 0.05
   balanced_sampler: false
-  class_sampling_power: 0.5        # only used when balanced_sampler=true
   lambda_frobenius: 0.002          # Stage 2A: tăng từ 0.001 (bù W_out không bị reg)
   patience: 15                     # Stage 2A: giảm từ 20 (stop overfit sớm hơn)
   model_selection_metric: "val_f1"

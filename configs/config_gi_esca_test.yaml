@@ -78,6 +78,7 @@ training:
 logging:
   save_dir:     "/kaggle/working/checkpoints_gi_esca_test/"
   log_interval: 5
+  print_classification_report: true
 
 interpretability:
   top_k_features: 50
