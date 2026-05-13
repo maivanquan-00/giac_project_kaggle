@@ -58,7 +58,8 @@ training:
   focal_gamma:     2.0
   focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]
   label_smoothing: 0.05
-  balanced_sampler: false
+  balanced_sampler: true
+  class_sampling_power: 0.5        # sqrt-inverse sampler: boost minority without full class balance
   lambda_frobenius: 0.002          # Stage 2A: tăng từ 0.001 (bù W_out không bị reg)
   patience: 15                     # Stage 2A: giảm từ 20 (stop overfit sớm hơn)
   model_selection_metric: "val_f1"
