@@ -248,10 +248,12 @@ Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), k
 | 4   | `gene ↔ copathway ↔ gene`                | Reactome `Ensembl2Reactome_All_Levels.txt`, pathway ≤ 50 genes | Cùng pathway → co-regulated                             | ~15K         |
 | 5   | `mirna ↔ samefamily ↔ mirna`             | TargetScan `miR_Family_Info.txt`                               | Cùng seed family → cơ chế tương tự                      | ~1.4K        |
 | 6   | `cpg ↔ coregulates ↔ mirna`              | **Suy diễn** từ #1 ∩ #3 (cùng regulate gene chung)             | Đóng vòng CpG–Gene–miRNA                                | ~18K         |
-| 7   | `cpg ↔ sameisland ↔ cpg`                 | Illumina 450K manifest `HumanMethylation450_manifest.csv`      | Cùng CpG island → co-methylated, cùng regulatory region | TBD          |
+| 7   | `cpg ↔ sameisland ↔ cpg`                 | Illumina 450K manifest `humanmethylation450_15017482_v1-2.csv` (Island+Shore) | Cùng CpG island → co-methylated, cùng regulatory region | ~991/fold |
 | 8   | Self-loops (3 cho mỗi node type)         | identity                                                       | Bảo toàn thông tin gốc qua GATv2                        | = số nodes   |
 
 **Capping** để tránh đồ thị quá dày (config `graph.max_edges_per_node = 20`, `max_targets_per_mirna = 100`, `max_coregulation_edges = 10`, `max_pathway_size = 50`, `MAX_FAMILY_SIZE = 20`).
+
+> **Ghi chú #7 (CpG island):** Thực nghiệm seed 42 GI dataset cho thấy ~991 edges/fold (Island+Shore) không cải thiện Macro F1 — ANOVA feature selection phân tán probe khắp genome, ít cặp probe cùng island cùng lọt qua. Giữ trong thiết kế vì có biological justification; cần 3-seed so sánh đầy đủ để kết luận.
 
 ### 4.3 Quy tắc matching tên (quan trọng cho lookup nhất quán)
 
