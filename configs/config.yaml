@@ -28,7 +28,7 @@ graph:
   reactome_max_pathway_size: 50
   max_targets_per_mirna:    100
   use_cpg_island:      true   # true để bật CpG↔CpG edges (cần manifest_file trong data)
-  cpg_island_relation: "Island"  # "Island" | "Island+Shore" | "all"
+  cpg_island_relation: "Island+Shore"  # "Island" | "Island+Shore" | "all"
 
 model:
   hidden_dim:  64
