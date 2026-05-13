@@ -222,11 +222,33 @@ def _make_stratify_targets(
     counts = pd.Series(composite).value_counts()
     targets = np.array(
         [
-            key if counts[key] >= min_count else f"subtype::{int(y)}"
+            key if counts[key] >= min_count else f"rare_subtype::{int(y)}"
             for key, y in zip(composite, labels)
         ],
         dtype=object,
     )
+
+    # If only one or two rare cancer-subtype samples exist for a subtype while
+    # the rest of that subtype sits in valid cancer-specific strata, the rare
+    # bucket itself is still too small for StratifiedKFold. In that case, merge
+    # the whole subtype into one stratum. This preserves cancer-type balancing
+    # for subtypes where every rare remainder is large enough, and avoids
+    # falling back to subtype-only for the entire dataset because of one sample.
+    target_counts = pd.Series(targets).value_counts()
+    too_small = set(target_counts[target_counts < min_count].index)
+    fallback_labels = {
+        int(str(t).split("::", 1)[1])
+        for t in too_small
+        if str(t).startswith("rare_subtype::")
+    }
+    if fallback_labels:
+        targets = np.array(
+            [
+                f"subtype::{int(y)}" if int(y) in fallback_labels else target
+                for target, y in zip(targets, labels)
+            ],
+            dtype=object,
+        )
 
     final_counts = pd.Series(targets).value_counts()
     if final_counts.min() < min_count:
