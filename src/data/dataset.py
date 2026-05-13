@@ -42,6 +42,10 @@ DEFAULT_PREPROCESS_CFG = {
     "minority_boost_mirna": 0,
     # Class indices of the minority classes to boost
     "minority_classes": [1, 3],  # GS=1, HM-SNV=3
+    # For multi-cancer datasets, balance folds by both subtype and cancer type
+    # when strata are large enough. Rare cancer-subtype pairs fall back to
+    # subtype-only strata so StratifiedKFold remains valid.
+    "stratify_by_cancer_type": True,
 }
 
 
@@ -51,7 +55,11 @@ def build_datasets(cfg: dict, seed: int = 42):
     split_cfg = _get_preprocess_cfg(cfg)
 
     idx_train, idx_val, idx_test = _make_single_split(
-        raw["labels"], seed=seed, val_size=split_cfg["val_size"]
+        raw["labels"],
+        cancer_types=raw.get("cancer_types"),
+        seed=seed,
+        val_size=split_cfg["val_size"],
+        stratify_by_cancer_type=split_cfg.get("stratify_by_cancer_type", True),
     )
     print(f"\n📊 Split: train={len(idx_train)}, val={len(idx_val)}, test={len(idx_test)}")
 
@@ -64,17 +72,35 @@ def build_cv_datasets(cfg: dict, seed: int = 42, n_splits: int | None = None):
     split_cfg = _get_preprocess_cfg(cfg)
     n_splits = n_splits or split_cfg["cv_folds"]
 
+    stratify_targets = _make_stratify_targets(
+        labels=raw["labels"],
+        cancer_types=raw.get("cancer_types"),
+        min_count=n_splits,
+        enabled=split_cfg.get("stratify_by_cancer_type", True),
+        context="outer CV",
+    )
+
     splitter = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     folds = []
 
     for fold_idx, (idx_trainval, idx_test) in enumerate(
-        splitter.split(np.zeros(len(raw["labels"])), raw["labels"]), start=1
+        splitter.split(np.zeros(len(raw["labels"])), stratify_targets), start=1
     ):
+        inner_stratify = _make_stratify_targets(
+            labels=raw["labels"][idx_trainval],
+            cancer_types=(
+                raw["cancer_types"][idx_trainval]
+                if raw.get("cancer_types") is not None else None
+            ),
+            min_count=2,
+            enabled=split_cfg.get("stratify_by_cancer_type", True),
+            context=f"fold {fold_idx} inner val",
+        )
         idx_train, idx_val = train_test_split(
             idx_trainval,
             test_size=split_cfg["val_size"],
             random_state=seed + fold_idx,
-            stratify=raw["labels"][idx_trainval],
+            stratify=inner_stratify,
         )
         folds.append(
             {
@@ -167,16 +193,88 @@ def load_aligned_data(cfg: dict) -> dict:
     }
 
 
-def _make_single_split(labels: np.ndarray, seed: int, val_size: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _make_stratify_targets(
+    labels: np.ndarray,
+    cancer_types: np.ndarray | None,
+    min_count: int,
+    enabled: bool,
+    context: str,
+) -> np.ndarray:
+    """Build robust stratification targets.
+
+    For multi-cancer data, common cancer-subtype pairs are stratified as
+    "Cancer::Subtype". Rare pairs are merged back into "Subtype" to avoid
+    invalid strata with fewer than `min_count` samples.
+    """
+    labels = np.asarray(labels)
+    if (
+        not enabled
+        or cancer_types is None
+        or len(np.unique(cancer_types)) <= 1
+    ):
+        return labels
+
+    cancer_types = np.asarray(cancer_types)
+    composite = np.array(
+        [f"{ct}::{int(y)}" for ct, y in zip(cancer_types, labels)],
+        dtype=object,
+    )
+    counts = pd.Series(composite).value_counts()
+    targets = np.array(
+        [
+            key if counts[key] >= min_count else f"subtype::{int(y)}"
+            for key, y in zip(composite, labels)
+        ],
+        dtype=object,
+    )
+
+    final_counts = pd.Series(targets).value_counts()
+    if final_counts.min() < min_count:
+        print(
+            f"  ⚠️  {context}: cancer_type stratification fallback to subtype "
+            f"(min stratum={final_counts.min()} < {min_count})"
+        )
+        return labels
+
+    print(
+        f"  Stratify {context}: subtype+cancer_type "
+        f"({len(final_counts)} strata, rare pairs merged)"
+    )
+    return targets
+
+
+def _make_single_split(
+    labels: np.ndarray,
+    cancer_types: np.ndarray | None,
+    seed: int,
+    val_size: float,
+    stratify_by_cancer_type: bool,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     idx = np.arange(len(labels))
+    outer_stratify = _make_stratify_targets(
+        labels=labels,
+        cancer_types=cancer_types,
+        min_count=2,
+        enabled=stratify_by_cancer_type,
+        context="single split test",
+    )
     idx_trainval, idx_test = train_test_split(
-        idx, test_size=0.2, random_state=seed, stratify=labels
+        idx, test_size=0.2, random_state=seed, stratify=outer_stratify
+    )
+    inner_stratify = _make_stratify_targets(
+        labels=labels[idx_trainval],
+        cancer_types=(
+            cancer_types[idx_trainval] if cancer_types is not None else None
+        ),
+        min_count=2,
+        enabled=stratify_by_cancer_type,
+        context="single split val",
     )
     idx_train, idx_val = train_test_split(
         idx_trainval,
         test_size=val_size,
         random_state=seed,
-        stratify=labels[idx_trainval],
+        stratify=inner_stratify,
     )
     return idx_train, idx_val, idx_test
 
