@@ -31,7 +31,7 @@ def _make_hetero_conv(hidden_dim: int, n_heads: int, dropout: float) -> HeteroCo
         ("gene",  "self_loop",    "gene"):  hom(),
         ("cpg",   "self_loop",    "cpg"):   hom(),
         ("mirna", "self_loop",    "mirna"): hom(),
-    }, aggr="mean")   # Phase 4e: 'sum' → 'mean' (balance dense vs sparse relations)
+    }, aggr="sum")
 
 
 class MultiOmicGATModule(nn.Module):
