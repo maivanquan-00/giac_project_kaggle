@@ -36,14 +36,12 @@ def _make_hetero_conv(hidden_dim: int, n_heads: int, dropout: float) -> HeteroCo
 
 class MultiOmicGATModule(nn.Module):
     def __init__(self, dims: dict, hidden_dim: int, n_heads: int,
-                 n_layers: int, dropout: float, topk_seq: int = 32,
-                 topk_seq_gene: int = 32):
+                 n_layers: int, dropout: float, topk_seq: int = 32):
         super().__init__()
         assert hidden_dim % n_heads == 0
         self.n_layers  = n_layers
         self.hidden_dim = hidden_dim
-        self.topk_seq  = topk_seq             # K tokens for cpg/mirna
-        self.topk_seq_gene = topk_seq_gene    # K_g tokens for gene (Phase 3.1)
+        self.topk_seq  = topk_seq  # K tokens per modality for cross-attention
 
         self.node_emb = nn.ParameterDict({
             "gene":  nn.Parameter(torch.empty(dims["gene"],  hidden_dim)),
@@ -65,28 +63,20 @@ class MultiOmicGATModule(nn.Module):
         ])
         self.dropout = nn.Dropout(dropout)
 
-        # Rank-based positional encodings for top-K gene/CpG/miRNA sequences.
-        # Each of the K slots (rank-0 = most active … rank K-1 = least active)
-        # receives a unique learned offset so that cross-attention can distinguish
-        # tokens even when their GAT embeddings are nearly identical.
-        self.gene_pos_emb  = nn.Embedding(topk_seq_gene, hidden_dim)   # Phase 3.1
+        # Rank-based positional encodings for top-K CpG and miRNA sequences.
         self.cpg_pos_emb   = nn.Embedding(topk_seq, hidden_dim)
         self.mirna_pos_emb = nn.Embedding(topk_seq, hidden_dim)
-        nn.init.normal_(self.gene_pos_emb.weight,  std=0.02)
         nn.init.normal_(self.cpg_pos_emb.weight,   std=0.02)
         nn.init.normal_(self.mirna_pos_emb.weight, std=0.02)
 
         # Phase 2.1a — Patient-aware FiLM params for top-K modulation.
         # z = E_topk + γ * E_topk * weights + β * weights; init γ=1, β=0 matches baseline.
-        # Phase 3.1: add FiLM cho gene cũng học theo same pattern.
-        self.film_gene_gamma  = nn.Parameter(torch.ones(1))
-        self.film_gene_beta   = nn.Parameter(torch.zeros(1))
         self.film_cpg_gamma   = nn.Parameter(torch.ones(1))
         self.film_cpg_beta    = nn.Parameter(torch.zeros(1))
         self.film_mirna_gamma = nn.Parameter(torch.ones(1))
         self.film_mirna_beta  = nn.Parameter(torch.zeros(1))
 
-        # Summary vector norm for gene query (retained — Phase 3.1 uses BOTH summary + seq)
+        # Summary vector norm for gene query only
         self.gene_norm = nn.LayerNorm(hidden_dim)
 
     def forward(self, batch: dict, graph: HeteroData):
@@ -100,23 +90,19 @@ class MultiOmicGATModule(nn.Module):
                 for t, h in x_dict.items()
             }
 
-        # ── Gene: BOTH summary vector + top-K sequence (Phase 3.1) ────
-        # Summary: weighted average over all genes (preserves baseline strength)
-        z_gene_summary = self.gene_norm(
+        # ── Gene: single summary vector (B, H) used as Query (Phase 2.1a baseline) ──
+        z_gene = self.gene_norm(
             torch.matmul(batch["gene"], x_dict["gene"])
             / math.sqrt(batch["gene"].shape[1])
         )
-        # Sequence: top-K_g genes by |z-score|, FiLM-modulated (gives cross-attn multi-token Q)
-        z_gene_seq = self._topk_seq(batch["gene"], x_dict["gene"], self.topk_seq_gene,
-                                    self.gene_pos_emb, self.film_gene_gamma, self.film_gene_beta)
 
-        # ── CpG/miRNA: top-K sequence as Key/Value (unchanged from 2.1a) ──
+        # ── CpG/miRNA: top-K sequence as Key/Value ──
         z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq,
                                      self.cpg_pos_emb, self.film_cpg_gamma, self.film_cpg_beta)
         z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq,
                                      self.mirna_pos_emb, self.film_mirna_gamma, self.film_mirna_beta)
 
-        return z_gene_summary, z_gene_seq, z_cpg_seq, z_mirna_seq
+        return z_gene, z_cpg_seq, z_mirna_seq
 
     def _topk_seq(self, X: torch.Tensor, E: torch.Tensor, K: int,
                   pos_emb: nn.Embedding = None,

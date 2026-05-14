@@ -387,17 +387,14 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"   cpg  : std={attn['cpg_std']:.4f}  max={attn['cpg_max']:.4f}  nnz={attn['cpg_nnz']:.3f}  global_w={attn['modality_w_cpg']:.3f}")
     print(f"   mirna: std={attn['mirna_std']:.4f}  max={attn['mirna_max']:.4f}  nnz={attn['mirna_nnz']:.3f}  global_w={attn['modality_w_mirna']:.3f}")
 
-    # Phase 2.1a + 3.1 — FiLM γ, β values (init γ=1, β=0)
+    # Phase 2.1a — FiLM γ, β values (init γ=1, β=0)
     film = {
-        "gene_gamma":  model.gat.film_gene_gamma.item(),
-        "gene_beta":   model.gat.film_gene_beta.item(),
         "cpg_gamma":   model.gat.film_cpg_gamma.item(),
         "cpg_beta":    model.gat.film_cpg_beta.item(),
         "mirna_gamma": model.gat.film_mirna_gamma.item(),
         "mirna_beta":  model.gat.film_mirna_beta.item(),
     }
     print(f"\n\U0001f3da️  FiLM (final, baseline γ=1 β=0) - {fold_name}")
-    print(f"   gene : γ={film['gene_gamma']:+.4f}  β={film['gene_beta']:+.4f}")
     print(f"   cpg  : γ={film['cpg_gamma']:+.4f}  β={film['cpg_beta']:+.4f}")
     print(f"   mirna: γ={film['mirna_gamma']:+.4f}  β={film['mirna_beta']:+.4f}")
  
@@ -488,7 +485,7 @@ def summarize_cv(results):
     film_list = [r.get("film", {}) for r in results if r.get("film")]
     if film_list:
         print(f"\n\U0001f3da️  FiLM γ, β (5-fold mean ± std, baseline γ=1 β=0):")
-        for k in ["gene_gamma", "gene_beta", "cpg_gamma", "cpg_beta", "mirna_gamma", "mirna_beta"]:
+        for k in ["cpg_gamma", "cpg_beta", "mirna_gamma", "mirna_beta"]:
             vals = np.array([f[k] for f in film_list if k in f])
             if vals.size:
                 drift = vals.mean() - (1.0 if k.endswith("gamma") else 0.0)

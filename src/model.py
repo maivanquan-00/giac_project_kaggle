@@ -10,15 +10,11 @@ from src.models.classifier import FocalLoss, SubtypeClassifier, SupConLoss, frob
 
 class ModalityCrossAttention(nn.Module):
     """
-    Asymmetric cross-attention: gene as Query (sequence, Phase 3.1), CpG/miRNA (B,K,H) as Key/Value.
+    Asymmetric cross-attention: gene (B,H) as Query, CpG/miRNA (B,K,H) as Key/Value.
 
-    Phase 3.1 changes from 2.1a:
-      - Q is now (B, K_g, H) gene sequence instead of (B, H) summary
-      - Multi-token Q → each gene token gets its own ctx_cpg, ctx_mirna
-      - After cross-attention, mean-pool gene sequence to (B, H)
-      - Cách C: concat[pooled, z_gene_summary] → W_combine → final (preserves baseline strength)
-
-    Entmax15 produces sparse weights → interpretable.
+    Gene attends over K most-active CpG nodes and K most-active miRNA nodes.
+    Entmax15 produces sparse weights → interpretable (which nodes matter per patient).
+    Output: gene enriched with epigenetic + post-transcriptional context.
     """
 
     def __init__(self, hidden_dim: int, n_heads: int, dropout: float, alpha: float = 1.5):
@@ -39,78 +35,62 @@ class ModalityCrossAttention(nn.Module):
         self.W_k_mirna = nn.Linear(hidden_dim, hidden_dim, bias=False)
         self.W_v_mirna = nn.Linear(hidden_dim, hidden_dim, bias=False)
 
-        # Combine both modality contexts (B, K_g, 2H) → (B, K_g, H)
+        # Combine both modality contexts → H
         self.W_out   = nn.Linear(hidden_dim * 2, hidden_dim)
-        # Phase 3.1 Cách C: combine [pooled gene seq | gene summary] → H
-        self.W_combine = nn.Linear(hidden_dim * 2, hidden_dim)
         self.dropout = nn.Dropout(dropout)
         self.norm    = nn.LayerNorm(hidden_dim)
 
         # Global modality importance (2: cpg, mirna)
         self.modality_logits = nn.Parameter(torch.zeros(2))
 
-        # Learnable log-temperature for attention sharpening.
+        # Learnable log-temperature for attention sharpening (init temp ≈ 2).
         self.log_temp = nn.Parameter(torch.tensor(0.69))
 
     @property
     def modality_weights(self):
         return F.softmax(self.modality_logits, dim=0)
 
-    def _attend_seq(self, q_seq, W_k, W_v, kv_seq):
+    def _attend(self, q, W_k, W_v, kv_seq):
         """
-        Phase 3.1: sequence Q cross-attention.
-        q_seq  : (B, K_g, H) — gene sequence query
-        kv_seq : (B, K, H)   — cpg or mirna sequence
-        Returns ctx (B, K_g, H) and attn (B, K_g, K) averaged over heads.
+        q      : (B, H)
+        kv_seq : (B, K, H)
+        Returns context (B, H) and attn_weights (B, K) averaged over heads.
         """
-        B, K_g, _ = q_seq.shape
-        _, K, _   = kv_seq.shape
+        B, K, _ = kv_seq.shape
 
-        # Q: (B, n_heads, K_g, head_dim)
-        Q = self.W_q(q_seq).view(B, K_g, self.n_heads, self.head_dim).transpose(1, 2)
+        # Q: (B, n_heads, 1, head_dim)
+        Q = self.W_q(q).view(B, self.n_heads, 1, self.head_dim)
         # K, V: (B, n_heads, K, head_dim)
         K_ = W_k(kv_seq).view(B, K, self.n_heads, self.head_dim).transpose(1, 2)
         V_ = W_v(kv_seq).view(B, K, self.n_heads, self.head_dim).transpose(1, 2)
 
-        # Attention scores: (B, n_heads, K_g, K)
         scores = torch.matmul(Q, K_.transpose(-2, -1)) * self.scale * self.log_temp.exp()
         if self.alpha == 1.0:
             attn = F.softmax(scores, dim=-1)
         else:
             attn = entmax15(scores, dim=-1)
-        ctx = torch.matmul(attn, V_)                        # (B, n_heads, K_g, head_dim)
+        ctx = torch.matmul(attn, V_)                      # (B, n_heads, 1, head_dim)
         ctx = self.dropout(ctx)
-        ctx = ctx.transpose(1, 2).contiguous().view(B, K_g, self.H)  # (B, K_g, H)
+        ctx = ctx.squeeze(2).transpose(1, 2).contiguous().view(B, self.H)
 
-        # Average attention over heads: (B, K_g, K)
-        attn_w = attn.mean(dim=1)
+        attn_w = attn.mean(dim=1).squeeze(1)              # (B, K)
         return ctx, attn_w
 
-    def forward(self, z_gene_summary, z_gene_seq, z_cpg_seq, z_mirna_seq, return_attn=False):
-        # Multi-Q cross-attention (Phase 3.1)
-        ctx_cpg,   attn_cpg   = self._attend_seq(z_gene_seq, self.W_k_cpg,   self.W_v_cpg,   z_cpg_seq)
-        ctx_mirna, attn_mirna = self._attend_seq(z_gene_seq, self.W_k_mirna, self.W_v_mirna, z_mirna_seq)
-        # ctx_*: (B, K_g, H)
+    def forward(self, z_gene, z_cpg_seq, z_mirna_seq, return_attn=False):
+        ctx_cpg,   attn_cpg   = self._attend(z_gene, self.W_k_cpg,   self.W_v_cpg,   z_cpg_seq)
+        ctx_mirna, attn_mirna = self._attend(z_gene, self.W_k_mirna, self.W_v_mirna, z_mirna_seq)
 
-        w = self.modality_weights                                            # (2,)
-        combined = torch.cat([w[0] * ctx_cpg, w[1] * ctx_mirna], dim=-1)     # (B, K_g, 2H)
-        seq_fused = self.norm(self.W_out(combined) + z_gene_seq)             # (B, K_g, H) — residual w/ seq
-
-        # Pool gene sequence to single vector (mean over K_g tokens)
-        seq_pooled = seq_fused.mean(dim=1)                                   # (B, H)
-
-        # Phase 3.1 Cách C: combine pooled sequence + summary (residual w/ summary)
-        final = self.norm(self.W_combine(torch.cat([seq_pooled, z_gene_summary], dim=-1)) + z_gene_summary)
-        # (B, H)
+        w = self.modality_weights                         # (2,)
+        combined = torch.cat([w[0] * ctx_cpg, w[1] * ctx_mirna], dim=-1)  # (B, 2H)
+        fused = self.norm(self.W_out(combined) + z_gene)  # residual
 
         if return_attn:
-            # Aggregate attention over gene tokens for interpretability: (B, K)
-            return final, {
-                "cpg_attn":        attn_cpg.mean(dim=1),     # (B, K_c)
-                "mirna_attn":      attn_mirna.mean(dim=1),   # (B, K_m)
-                "modality_weights": w,                       # (2,)
+            return fused, {
+                "cpg_attn":        attn_cpg,              # (B, K)
+                "mirna_attn":      attn_mirna,            # (B, K)
+                "modality_weights": w,                    # (2,)
             }
-        return final, None
+        return fused, None
 
 
 class GIACModel(nn.Module):
@@ -120,16 +100,14 @@ class GIACModel(nn.Module):
         H           = cfg_model["hidden_dim"]
         num_classes = cfg_model["num_classes"]
         topk        = cfg_model.get("topk_seq", 32)
-        topk_gene   = cfg_model.get("topk_seq_gene", topk)   # Phase 3.1: default = topk
 
         self.gat = MultiOmicGATModule(
-            dims          = dims,
-            hidden_dim    = H,
-            n_heads       = cfg_model["gat_heads"],
-            n_layers      = cfg_model["gat_layers"],
-            dropout       = cfg_model.get("gat_dropout", 0.3),
-            topk_seq      = topk,
-            topk_seq_gene = topk_gene,
+            dims       = dims,
+            hidden_dim = H,
+            n_heads    = cfg_model["gat_heads"],
+            n_layers   = cfg_model["gat_layers"],
+            dropout    = cfg_model.get("gat_dropout", 0.3),
+            topk_seq   = topk,
         )
         self.cross_attn = ModalityCrossAttention(
             hidden_dim = H,
@@ -165,9 +143,9 @@ class GIACModel(nn.Module):
         self.focal_loss.set_alpha(self.class_weights)
 
     def forward(self, batch, graph, return_interpretability=False, return_embeddings=False):
-        z_gene_summary, z_gene_seq, z_cpg_seq, z_mirna_seq = self.gat(batch, graph)
+        z_gene, z_cpg_seq, z_mirna_seq = self.gat(batch, graph)
         fused, attn_info = self.cross_attn(
-            z_gene_summary, z_gene_seq, z_cpg_seq, z_mirna_seq, return_attn=True
+            z_gene, z_cpg_seq, z_mirna_seq, return_attn=True
         )
         logits = self.classifier(fused)
 
