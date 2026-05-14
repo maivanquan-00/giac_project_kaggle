@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdftotext -layout \"2025 - MoXGATE- Modality-Aware Cross-Attention for Multi-Omic Gastrointestinal Cancer Subtype Classification.pdf\" /tmp/moxgate.txt)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

@@ -91,11 +91,17 @@ def print_classification_report(y_true, y_pred, class_names=None):
 
 
 def save_confusion_matrix_csv(y_true, y_pred, path, class_names=None):
-    """Lưu confusion matrix dạng số tuyệt đối ra CSV."""
+    """Lưu confusion matrix dạng số tuyệt đối ra CSV.
+
+    Khi class_names truyền vào, ưu tiên dùng len(class_names) làm n_classes
+    để xử lý đúng trường hợp test set thiếu một class (vd. ESCA không có EBV).
+    """
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
-    n_classes = max(int(y_true.max()), int(y_pred.max())) + 1
-    if class_names is None:
+    if class_names is not None:
+        n_classes = len(class_names)
+    else:
+        n_classes = max(int(y_true.max()), int(y_pred.max())) + 1
         class_names = [f"Class_{i}" for i in range(n_classes)]
     cm = confusion_matrix(y_true, y_pred, labels=np.arange(n_classes))
     df = pd.DataFrame(
@@ -171,8 +177,10 @@ def plot_confusion_matrix_figure(y_true, y_pred, path: str, title: str, class_na
     ensure_dir(os.path.dirname(path))
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
-    n_classes = max(int(y_true.max()), int(y_pred.max())) + 1
-    if class_names is None:
+    if class_names is not None:
+        n_classes = len(class_names)
+    else:
+        n_classes = max(int(y_true.max()), int(y_pred.max())) + 1
         class_names = [f"Class {i}" for i in range(n_classes)]
 
     cm = confusion_matrix(y_true, y_pred, labels=np.arange(n_classes))
