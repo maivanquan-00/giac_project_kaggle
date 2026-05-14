@@ -5,7 +5,8 @@
       "Read(//tmp/**)",
       "Bash(awk -F: '$1 > 600 && $1 < 700')",
       "Bash(python -c \"import ast; ast.parse\\(open\\('src/models/gat_encoder.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c ' *)"
     ]
   }
 }
