@@ -75,9 +75,15 @@ def print_metrics(metrics: dict, split: str = ""):
 
 
 def print_classification_report(y_true, y_pred, class_names=None):
-    """In classification report chi tiết per-class P/R/F1."""
+    """In classification report chi tiết per-class P/R/F1.
+
+    Pass `labels=range(num_classes)` so sklearn doesn't choke when a class is
+    absent from y_true/y_pred (e.g. ESCA test set has no EBV samples).
+    """
+    labels = list(range(len(class_names))) if class_names is not None else None
     print(classification_report(
         y_true, y_pred,
+        labels=labels,
         target_names=class_names,
         zero_division=0,
         digits=4,
