@@ -72,6 +72,15 @@ class MultiOmicGATModule(nn.Module):
         nn.init.normal_(self.cpg_pos_emb.weight,   std=0.02)
         nn.init.normal_(self.mirna_pos_emb.weight, std=0.02)
 
+        # Phase 2.1a — Patient-aware FiLM params for top-K modulation.
+        # Baseline implicit modulation: z = E_topk + E_topk * weights (γ=1, β=0 fixed).
+        # Make γ, β learnable per modality so model can adjust strength of patient
+        # value influence on top-K embeddings. Init to baseline-equivalent values.
+        self.film_cpg_gamma   = nn.Parameter(torch.ones(1))
+        self.film_cpg_beta    = nn.Parameter(torch.zeros(1))
+        self.film_mirna_gamma = nn.Parameter(torch.ones(1))
+        self.film_mirna_beta  = nn.Parameter(torch.zeros(1))
+
         # Summary vector norm for gene query only
         self.gene_norm = nn.LayerNorm(hidden_dim)
 
@@ -93,22 +102,35 @@ class MultiOmicGATModule(nn.Module):
         )
 
         # ── CpG: top-K sequence (B, K, H) used as Key/Value ───────────
-        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq, self.cpg_pos_emb)
-        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq, self.mirna_pos_emb)
+        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq,
+                                     self.cpg_pos_emb, self.film_cpg_gamma, self.film_cpg_beta)
+        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq,
+                                     self.mirna_pos_emb, self.film_mirna_gamma, self.film_mirna_beta)
 
         return z_gene, z_cpg_seq, z_mirna_seq
 
     def _topk_seq(self, X: torch.Tensor, E: torch.Tensor, K: int,
-                  pos_emb: nn.Embedding = None) -> torch.Tensor:
+                  pos_emb: nn.Embedding = None,
+                  film_gamma: torch.Tensor = None,
+                  film_beta: torch.Tensor = None) -> torch.Tensor:
+        """Top-K patient-aware sequence with learnable FiLM modulation.
+
+        z = E_topk + γ * E_topk * weights + β * weights
+        Init γ=1, β=0 → equivalent to baseline `E_topk + E_topk * weights`.
+        Model learns to adjust γ (scale of multiplicative patient signal) and β
+        (additive patient signal bias).
+        """
         B, n_feat = X.shape
         K = min(K, n_feat)
 
         topk_idx = X.abs().topk(K, dim=1).indices       # (B, K)
         E_topk   = E[topk_idx]                          # (B, K, H)
 
-        # Modulate each node embedding by patient's feature value (signed, standardised)
         weights = X.gather(1, topk_idx).unsqueeze(-1)   # (B, K, 1)
-        z_seq   = E_topk + E_topk * weights             # (B, K, H)
+        if film_gamma is not None and film_beta is not None:
+            z_seq = E_topk + film_gamma * E_topk * weights + film_beta * weights
+        else:
+            z_seq = E_topk + E_topk * weights           # baseline fallback
 
         if pos_emb is not None:
             rank_ids = torch.arange(K, device=X.device).unsqueeze(0).expand(B, -1)

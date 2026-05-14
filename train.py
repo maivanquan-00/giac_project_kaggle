@@ -386,6 +386,17 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"\n\U0001f50d Attention Stats - {fold_name}")
     print(f"   cpg  : std={attn['cpg_std']:.4f}  max={attn['cpg_max']:.4f}  nnz={attn['cpg_nnz']:.3f}  global_w={attn['modality_w_cpg']:.3f}")
     print(f"   mirna: std={attn['mirna_std']:.4f}  max={attn['mirna_max']:.4f}  nnz={attn['mirna_nnz']:.3f}  global_w={attn['modality_w_mirna']:.3f}")
+
+    # Phase 2.1a — FiLM γ, β values (init γ=1, β=0; nếu drift xa → patient modulation hoạt động)
+    film = {
+        "cpg_gamma":   model.gat.film_cpg_gamma.item(),
+        "cpg_beta":    model.gat.film_cpg_beta.item(),
+        "mirna_gamma": model.gat.film_mirna_gamma.item(),
+        "mirna_beta":  model.gat.film_mirna_beta.item(),
+    }
+    print(f"\n\U0001f3da️  FiLM (final, baseline γ=1 β=0) - {fold_name}")
+    print(f"   cpg  : γ={film['cpg_gamma']:+.4f}  β={film['cpg_beta']:+.4f}")
+    print(f"   mirna: γ={film['mirna_gamma']:+.4f}  β={film['mirna_beta']:+.4f}")
  
     # Per-cancer-type F1 breakdown (for multi-cancer datasets like GI)
     per_ct_f1 = {}
@@ -408,7 +419,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             "test_metrics_calibrated": test_m_cal, "per_class_f1_calibrated": per_class_f1_cal,
             "threshold_offsets": offsets.tolist(),
             "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1,
-            "per_class_f1": per_class_f1, "attn": attn,
+            "per_class_f1": per_class_f1, "attn": attn, "film": film,
             "best_val_loss": best_loss, "stop_epoch": epoch,
             "n_params": n_params, "dims": dims,
             "train_f1_at_best_val": train_f1_at_best}
@@ -469,6 +480,16 @@ def summarize_cv(results):
             vals = np.array([a[k] for a in attn_list if k in a])
             if vals.size:
                 print(f"  {k:18s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
+
+    # ── FiLM γ, β summary (Phase 2.1a; baseline init γ=1, β=0) ──────
+    film_list = [r.get("film", {}) for r in results if r.get("film")]
+    if film_list:
+        print(f"\n\U0001f3da️  FiLM γ, β (5-fold mean ± std, baseline γ=1 β=0):")
+        for k in ["cpg_gamma", "cpg_beta", "mirna_gamma", "mirna_beta"]:
+            vals = np.array([f[k] for f in film_list if k in f])
+            if vals.size:
+                drift = vals.mean() - (1.0 if k.endswith("gamma") else 0.0)
+                print(f"  {k:14s}: mean={vals.mean():+.4f}  std={vals.std(ddof=0):.4f}  drift={drift:+.4f}")
 
     # ── Model size & feature counts (5-fold mean) ───────────────────
     n_params_list = [r.get("n_params") for r in results if r.get("n_params")]

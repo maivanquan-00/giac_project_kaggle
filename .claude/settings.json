@@ -3,7 +3,9 @@
     "allow": [
       "Bash(pdftotext -layout \"2025 - MoXGATE- Modality-Aware Cross-Attention for Multi-Omic Gastrointestinal Cancer Subtype Classification.pdf\" /tmp/moxgate.txt)",
       "Read(//tmp/**)",
-      "Bash(awk -F: '$1 > 600 && $1 < 700')"
+      "Bash(awk -F: '$1 > 600 && $1 < 700')",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/models/gat_encoder.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }
