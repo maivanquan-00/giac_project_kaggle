@@ -61,6 +61,7 @@ training:
   balanced_sampler: false
   lambda_frobenius: 0.002          # Stage 2A: tăng từ 0.001 (bù W_out không bị reg)
   patience: 15                     # Stage 2A: giảm từ 20 (stop overfit sớm hơn)
+  min_epochs: 40                   # ngăn stop quá sớm trước khi OneCycle warmup + một số epochs phát huy max_lr
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"

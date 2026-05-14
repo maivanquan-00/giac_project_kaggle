@@ -66,6 +66,7 @@ training:
   balanced_sampler: false
   lambda_frobenius: 0.002
   patience: 15
+  min_epochs: 40
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"

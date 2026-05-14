@@ -263,7 +263,10 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["training"]["epochs"])
         step_per_batch = False
  
-    early_stop = EarlyStopping(patience=cfg["training"]["patience"])
+    early_stop = EarlyStopping(
+        patience=cfg["training"]["patience"],
+        min_epochs=cfg["training"].get("min_epochs", 0),
+    )
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"\n\U0001f9e0 {fold_name} params: {n_params:,}")
     print(f"\U0001f680 Training {fold_name}...  scheduler={sched_name}")

@@ -299,21 +299,29 @@ def apply_threshold_offsets(probs: np.ndarray, offsets: np.ndarray) -> np.ndarra
 
 
 class EarlyStopping:
-    """Dừng training khi val F1 không cải thiện sau `patience` epochs."""
+    """Dừng training khi val F1 không cải thiện sau `patience` epochs.
 
-    def __init__(self, patience: int = 15, min_delta: float = 1e-4):
+    `min_epochs` ngăn early stop trong giai đoạn đầu — đặc biệt cần khi dùng
+    OneCycleLR có warmup, hoặc khi val F1 dao động mạnh ở early epochs khiến
+    patience counter trigger oan trước khi model converge thật sự.
+    """
+
+    def __init__(self, patience: int = 15, min_delta: float = 1e-4, min_epochs: int = 0):
         self.patience   = patience
         self.min_delta  = min_delta
+        self.min_epochs = min_epochs
         self.best_score = None
         self.counter    = 0
+        self.epoch      = 0
         self.stop       = False
 
     def step(self, score: float) -> bool:
+        self.epoch += 1
         if self.best_score is None or score > self.best_score + self.min_delta:
             self.best_score = score
             self.counter    = 0
         else:
             self.counter += 1
-            if self.counter >= self.patience:
+            if self.counter >= self.patience and self.epoch >= self.min_epochs:
                 self.stop = True
         return self.stop

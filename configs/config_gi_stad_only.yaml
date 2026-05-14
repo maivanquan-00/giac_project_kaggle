@@ -63,6 +63,7 @@ training:
   balanced_sampler: false
   lambda_frobenius: 0.002          # sync Stage 2A
   patience: 15                     # sync Stage 2A
+  min_epochs: 40
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
