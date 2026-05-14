@@ -32,8 +32,8 @@ graph:
   cpg_island_relation: "Island+Shore"  # "Island" | "Island+Shore" | "all"
 
 model:
-  hidden_dim:  128               # Phase 5a: 96→128 (push capacity tiếp)
-  gat_heads:   4
+  hidden_dim:  96                # Phase 4d sweet spot (96 better than 64 or 128)
+  gat_heads:   8                 # Phase 5b: 4→8 heads (finer attention granularity)
   gat_layers:  2
   gat_dropout: 0.3                # Phase 4c keep: 0.5→0.3 worked +0.03 val F1
   topk_seq:    32
