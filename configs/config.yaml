@@ -42,7 +42,7 @@ model:
   sparsemax_alpha: 1.5   # entmax15
   num_classes: 5
   classifier_dropout: 0.5
-  final_dim:   32
+  final_dim:   64                # Phase 4: widen từ 32 (xoá bottleneck 64→32→5)
 
 training:
   epochs:      150
