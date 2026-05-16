@@ -33,7 +33,7 @@ graph:
 
 model:
   hidden_dim:  96                # Phase 4d sweet spot (96 better than 64 or 128)
-  gat_heads:   8                 # Phase 5b: 4→8 heads (finer attention granularity)
+  gat_heads:   4                 # Phase 4d/5b confirmed: 4 heads optimal (5b 8 heads = tie)
   gat_layers:  2
   gat_dropout: 0.3                # Phase 4c keep: 0.5→0.3 worked +0.03 val F1
   topk_seq:    32
