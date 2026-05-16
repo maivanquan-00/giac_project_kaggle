@@ -34,10 +34,10 @@ graph:
   cpg_island_relation: "Island+Shore"
 
 model:
-  hidden_dim:  64
+  hidden_dim:  96                # Phase 4d sweet spot (sync GI combined CV)
   gat_heads:   4
   gat_layers:  2
-  gat_dropout: 0.5
+  gat_dropout: 0.3                # Phase 4c (sync GI combined CV)
   topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4

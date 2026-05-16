@@ -56,13 +56,13 @@ def parse_cv_summary(stdout: str) -> dict | None:
     Train.py prints:
         📈 5-fold CV summary
           ACCURACY   : mean=0.8331  std=0.0495
-          PRECISION  : mean=0.6892  std=0.0719
-          RECALL     : mean=0.7087  std=0.0488
-          F1         : mean=0.6886  std=0.0567
+          F1         : mean=0.6886  std=0.0567  | cal=0.6973 (-0.0130)  ← F1 có suffix " | cal=..."
           F1_WEIGHTED: mean=0.8388  std=0.0454
+
+    Regex KHÔNG yêu cầu end-of-line sau std → handle suffix " | cal=...".
     """
     pattern = re.compile(
-        r"^\s+([A-Z_0-9]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)\s*$",
+        r"^\s+([A-Z_0-9]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)",
         re.MULTILINE,
     )
     matches = pattern.findall(stdout)
@@ -72,8 +72,8 @@ def parse_cv_summary(stdout: str) -> dict | None:
 
 
 def parse_per_fold_f1(stdout: str) -> list[float]:
-    """Extract per-fold test F1 (macro) — line dạng: '✅ Test F1:     0.7006'."""
-    return [float(v) for v in re.findall(r"✅ Test F1:\s+([\d.]+)", stdout)]
+    """Extract per-fold test F1 (macro RAW) — line dạng: '✅ Test F1  raw=0.7006  cal=0.6973'."""
+    return [float(v) for v in re.findall(r"✅ Test F1\s+raw=([\d.]+)", stdout)]
 
 
 def parse_per_cancer_type(stdout: str) -> dict | None:
