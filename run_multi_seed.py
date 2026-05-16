@@ -223,6 +223,29 @@ def parse_per_class_f1(stdout: str) -> dict | None:
     return {cls: {"f1_mean": float(m), "f1_std": float(s)} for cls, m, s in rows}
 
 
+def parse_class_names(stdout: str) -> dict | None:
+    """Extract class index → name mapping từ train.py per-fold output.
+
+    Format (in per-fold output):
+        🎯 Per-class F1 - Fold 1  (raw → calibrated)
+           0:Basal     0.8840 → 0.9081  (+0.0241)
+           1:Her2      0.8000 → 0.8193  (+0.0193)
+    """
+    # Match: "   {idx}:{name}   {raw} → ..."
+    rows = re.findall(
+        r"^\s+(\d+):(\S+)\s+[\d.]+\s+→",
+        stdout,
+        re.MULTILINE,
+    )
+    if not rows:
+        return None
+    # Take last occurrence per class (most reliable, after all folds run)
+    out = {}
+    for idx, name in rows:
+        out[idx] = name
+    return out if out else None
+
+
 def aggregate_seeds(seed_results: list[dict]) -> dict:
     """Aggregate stats qua nhiều seeds.
 
@@ -271,6 +294,7 @@ def main():
     seed_attn = {}
     seed_overfit = {}
     seed_modelft = {}
+    seed_class_names = {}
 
     for seed in args.seeds:
         seed_dir = out_root / f"seed_{seed}"
@@ -322,6 +346,7 @@ def main():
         per_fold = parse_per_fold_f1(stdout)
         per_ct = parse_per_cancer_type(stdout)
         per_class = parse_per_class_f1(stdout)
+        class_names = parse_class_names(stdout)
         attn = parse_attention_stats(stdout)
         overfit = parse_overfit_indicator(stdout)
         modelft = parse_model_features(stdout)
@@ -350,6 +375,8 @@ def main():
             seed_overfit[seed] = overfit
         if modelft:
             seed_modelft[seed] = modelft
+        if class_names:
+            seed_class_names[seed] = class_names
 
     # ── Aggregate ─────────────────────────────────────────────
     aggregated = aggregate_seeds(list(seed_summaries.values()))
@@ -454,13 +481,12 @@ def main():
             print()
 
     if seed_per_class:
-        class_names = {
-            "0": "CIN",
-            "1": "GS",
-            "2": "MSI",
-            "3": "HM-SNV",
-            "4": "EBV",
-        }
+        # Use class names parsed from train.py output (per-dataset correct).
+        # Fallback to GI defaults if parsing failed.
+        if seed_class_names:
+            class_names = next(iter(seed_class_names.values()))   # consistent across seeds
+        else:
+            class_names = {"0": "CIN", "1": "GS", "2": "MSI", "3": "HM-SNV", "4": "EBV"}
         all_classes = sorted(set().union(*[d.keys() for d in seed_per_class.values()]), key=int)
         print("**Per-class F1 (mean across seeds):**")
         print()
