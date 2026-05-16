@@ -32,7 +32,7 @@ graph:
   cpg_island_relation: "Island"
 
 model:
-  hidden_dim:  128               # BRCA-tuned: 96→128 (train-val gap 0.03 → còn capacity dư)
+  hidden_dim:  96                # BRCA sweet spot (128 caused overfit, gap 0.03→0.07)
   gat_heads:   4
   gat_layers:  2
   gat_dropout: 0.3                # Phase 4c
