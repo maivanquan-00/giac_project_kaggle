@@ -51,24 +51,37 @@ def parse_args():
 
 
 def parse_cv_summary(stdout: str) -> dict | None:
-    """Extract '5-fold CV summary' block từ train.py stdout.
+    """Extract test metrics block từ train.py stdout.
 
-    Train.py prints:
-        📈 5-fold CV summary
-          ACCURACY   : mean=0.8331  std=0.0495
-          F1         : mean=0.6886  std=0.0567  | cal=0.6973 (-0.0130)  ← F1 có suffix " | cal=..."
-          F1_WEIGHTED: mean=0.8388  std=0.0454
+    Hai format:
+    1. CV mode: '📈 5-fold CV summary' với mean ± std
+    2. Fixed-test mode (ESCA scenario): single '[Raw  ] Acc=... F1=...' line
 
-    Regex KHÔNG yêu cầu end-of-line sau std → handle suffix " | cal=...".
+    Returns {metric_name: {"mean": x, "std": y}} for both.
     """
+    # Try CV format first
     pattern = re.compile(
         r"^\s+([A-Z_0-9]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)",
         re.MULTILINE,
     )
     matches = pattern.findall(stdout)
-    if not matches:
-        return None
-    return {name.lower(): {"mean": float(m), "std": float(s)} for name, m, s in matches}
+    if matches:
+        return {name.lower(): {"mean": float(m), "std": float(s)} for name, m, s in matches}
+
+    # Fallback: fixed-test (1 split) — parse '[Raw  ] Acc=X P=X R=X F1=X F1w=X'
+    m = re.search(
+        r"\[Raw\s*\]\s+Acc=([\d.]+)\s+P=([\d.]+)\s+R=([\d.]+)\s+F1=([\d.]+)\s+F1w=([\d.]+)",
+        stdout,
+    )
+    if m:
+        return {
+            "accuracy":    {"mean": float(m.group(1)), "std": 0.0},
+            "precision":   {"mean": float(m.group(2)), "std": 0.0},
+            "recall":      {"mean": float(m.group(3)), "std": 0.0},
+            "f1":          {"mean": float(m.group(4)), "std": 0.0},
+            "f1_weighted": {"mean": float(m.group(5)), "std": 0.0},
+        }
+    return None
 
 
 def parse_per_fold_f1(stdout: str) -> list[float]:
@@ -314,11 +327,16 @@ def main():
         modelft = parse_model_features(stdout)
 
         if cv:
-            print(f"\n✅ Seed {seed} done — F1 macro = {cv.get('f1', {}).get('mean', 0):.4f}, "
-                  f"F1 weighted = {cv.get('f1_weighted', {}).get('mean', 0):.4f}", flush=True)
+            print(
+                f"\n✅ Seed {seed} done — "
+                f"Acc={cv.get('accuracy', {}).get('mean', 0):.4f}  "
+                f"F1w={cv.get('f1_weighted', {}).get('mean', 0):.4f}  "
+                f"F1macro={cv.get('f1', {}).get('mean', 0):.4f}",
+                flush=True,
+            )
             seed_summaries[seed] = cv
         else:
-            print(f"\n⚠️  Seed {seed}: không parse được CV summary từ log", flush=True)
+            print(f"\n⚠️  Seed {seed}: không parse được test metrics từ log", flush=True)
 
         if per_fold:
             seed_per_fold[seed] = per_fold
@@ -349,23 +367,45 @@ def main():
     print("═" * 78)
     print()  # blank line
 
+    # ── Detect fixed-test scenario (1 "fold" per seed) ──
+    n_folds = max((len(f) for f in seed_per_fold.values()), default=5)
+    is_fixed_test = n_folds == 1
+
     # ── Begin paste block ──
-    title = f"## [{timestamp_iso}] `{cfg_short}` — Macro F1: **{f1_macro.get('mean_of_means', 0):.4f} ± {f1_macro.get('std_of_means', 0):.4f}**"
+    if is_fixed_test:
+        # Fixed-test (ESCA scenario): Acc + F1w là metric chính (đối chiếu MoXGATE paper)
+        acc_str = f"{acc.get('mean_of_means', 0):.4f} ± {acc.get('std_of_means', 0):.4f}"
+        f1w_str = f"{f1_w.get('mean_of_means', 0):.4f} ± {f1_w.get('std_of_means', 0):.4f}"
+        title = f"## [{timestamp_iso}] `{cfg_short}` — Acc: **{acc_str}**  |  Weighted F1: **{f1w_str}**"
+        runs_label = f"{len(args.seeds)} × 1 fixed-test split"
+    else:
+        # CV scenario: Macro F1 là primary
+        title = f"## [{timestamp_iso}] `{cfg_short}` — Macro F1: **{f1_macro.get('mean_of_means', 0):.4f} ± {f1_macro.get('std_of_means', 0):.4f}**"
+        runs_label = f"{len(args.seeds)} × {n_folds} folds"
     print(title)
     print()
-    print(f"**Config:** `{args.config}`  |  **Seeds:** {args.seeds}  |  **N runs:** {len(args.seeds)} × {len(next(iter(seed_per_fold.values()), [1,2,3,4,5]))} folds")
+    print(f"**Config:** `{args.config}`  |  **Seeds:** {args.seeds}  |  **N runs:** {runs_label}")
     print()
 
-    # Aggregate metrics table
+    # Aggregate metrics table — reorder cho fixed-test
     print("| Metric | Mean ± Std | Per-seed means |")
     print("|--------|------------|----------------|")
-    label_map = [
-        ("f1",          "**Macro F1**"),
-        ("f1_weighted", "Weighted F1"),
-        ("accuracy",    "Accuracy"),
-        ("precision",   "Precision (macro)"),
-        ("recall",      "Recall (macro)"),
-    ]
+    if is_fixed_test:
+        label_map = [
+            ("accuracy",    "**Accuracy**"),
+            ("f1_weighted", "**Weighted F1**"),
+            ("f1",          "Macro F1"),
+            ("precision",   "Precision (macro)"),
+            ("recall",      "Recall (macro)"),
+        ]
+    else:
+        label_map = [
+            ("f1",          "**Macro F1**"),
+            ("f1_weighted", "Weighted F1"),
+            ("accuracy",    "Accuracy"),
+            ("precision",   "Precision (macro)"),
+            ("recall",      "Recall (macro)"),
+        ]
     for key, label in label_map:
         if key not in aggregated:
             continue
@@ -374,9 +414,8 @@ def main():
         print(f"| {label} | {s['mean_of_means']:.4f} ± {s['std_of_means']:.4f} | {per_seed_str} |")
     print()
 
-    # Per-fold breakdown (compact)
-    if seed_per_fold:
-        n_folds = max((len(f) for f in seed_per_fold.values()), default=5)
+    # Per-fold breakdown (compact) — SKIP cho fixed-test vì degenerate (1 split = same as per-seed)
+    if seed_per_fold and not is_fixed_test:
         header = "| Seed | " + " | ".join(f"Fold {i+1}" for i in range(n_folds)) + " | Mean |"
         sep = "|------|" + "|".join("---" for _ in range(n_folds)) + "|------|"
         print("**Per-fold F1 (macro):**")
