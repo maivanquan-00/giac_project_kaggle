@@ -1,21 +1,21 @@
 data:
-  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_kipan"
+  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_lgg"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
-  emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/KIPAN_extend"
+  emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/LGG_extend"
   manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
-  cancer_types: ["KICH", "KIRC", "KIRP"]
+  cancer_types: ["LGG"]
 
 preprocessing:
-  gene_top_k:   3500
-  meth_top_k:   3500
+  gene_top_k:   3000      # LGG ~500 samples → smaller feature pool
+  meth_top_k:   3000
   mirna_top_k:  null      # null = dùng tất cả miRNA sau low-expression filter (~593)
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
-  minority_boost_gene:  300
-  minority_boost_meth:  200
+  minority_boost_gene:  200
+  minority_boost_meth:  150
   minority_boost_mirna: 0
-  minority_classes: [0]   # KICH=0 (chromophobe, smallest kidney subtype ~5%)
+  minority_classes: [0]   # Codel typically rarest in LGG (~20-25%)
 
 graph:
   emqtl_pval_threshold:    0.05
@@ -32,10 +32,10 @@ graph:
   cpg_island_relation: "Island"
 
 model:
-  hidden_dim:  96                # Phase 4d sweet spot (sync GI combined CV)
+  hidden_dim:  96                # Phase 4d sweet spot
   gat_heads:   4
   gat_layers:  2
-  gat_dropout: 0.3                # Phase 4c (sync GI combined CV)
+  gat_dropout: 0.3                # Phase 4c
   topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4
@@ -56,18 +56,19 @@ training:
   weight_decay:          3.0e-3
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
-  focal_alpha:     [5.0, 1.0, 2.0]   # overridden at runtime by compute_class_weights
+  focal_alpha:     [2.0, 1.0, 1.5]   # placeholder, overridden by compute_class_weights
   label_smoothing: 0.05
   balanced_sampler: false
   lambda_frobenius: 0.001
   patience: 20
+  min_epochs: 40
   model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
-  subtype_names: ["KICH", "KIRC", "KIRP"]
+  subtype_names: ["Codel", "IDHmut-non-codel", "IDHwt"]
   minority_augmentation:
     enabled: true
-    class: 0           # KICH=0 — minority chính của KIPAN (~9%)
+    class: 0           # Codel — minority
     noise_std: 0.10
 
 logging:
