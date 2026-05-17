@@ -397,13 +397,17 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     val_m_best = eval_epoch(model, val_loader, graph, device)
     val_f1_best = val_m_best["f1"]
 
-    # ── SWA: evaluate, compare, pick winner (val F1) ──
+    # ── SWA: evaluate, compare, pick winner ──
+    # Selection metric: macro F1 (consistent với current convention).
+    # Nhưng report Δ cho cả Acc + F1w + Macro F1 để theo dõi stability đa-metric.
     eval_model = model
     selected = "best_ckpt"
     test_m, test_labels, test_preds = test_m_best, test_labels_best, test_preds_best
     selected_val_f1 = val_f1_best
-    val_f1_swa = None
-    test_f1_swa = None
+    val_metrics_vanilla = val_m_best
+    test_metrics_vanilla = test_m_best
+    val_metrics_swa = None
+    test_metrics_swa = None
     n_swa_avg = 0
     if swa_enabled and swa_model is not None:
         # Model dùng LayerNorm (không có BN running stats) → skip update_bn.
@@ -411,24 +415,28 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         swa_test_m, swa_test_labels, swa_test_preds = eval_epoch(
             swa_model, test_loader, graph, device, return_predictions=True
         )
-        val_f1_swa = swa_val_m["f1"]
-        test_f1_swa = swa_test_m["f1"]
+        val_metrics_swa = swa_val_m
+        test_metrics_swa = swa_test_m
         n_swa_avg = int(swa_model.n_averaged.item())
         print(f"\n🪶 SWA evaluation - {fold_name}  (averaged {n_swa_avg} snapshots)")
-        print(f"   best_ckpt : val F1={val_f1_best:.4f}  test F1={test_m_best['f1']:.4f}")
-        print(f"   swa       : val F1={val_f1_swa:.4f}  test F1={test_f1_swa:.4f}")
-        if val_f1_swa >= val_f1_best:
+        print(f"   {'metric':<14s} {'best_ckpt':>10s} {'swa':>10s} {'Δ':>10s}")
+        for k in ("accuracy", "f1_weighted", "f1"):
+            bv, sv = val_m_best.get(k, 0), swa_val_m.get(k, 0)
+            bt, st = test_m_best.get(k, 0), swa_test_m.get(k, 0)
+            print(f"   val   {k:<8s}  {bv:>10.4f} {sv:>10.4f} {sv-bv:>+10.4f}")
+            print(f"   test  {k:<8s}  {bt:>10.4f} {st:>10.4f} {st-bt:>+10.4f}")
+        if swa_val_m["f1"] >= val_f1_best:
             eval_model = swa_model
             selected = "swa"
             test_m = swa_test_m
             test_labels = swa_test_labels
             test_preds = swa_test_preds
-            selected_val_f1 = val_f1_swa
+            selected_val_f1 = swa_val_m["f1"]
             swa_ckpt_path = ckpt_path.replace(".pt", "_swa.pt")
             torch.save({"model": swa_model.state_dict(), "n_averaged": n_swa_avg}, swa_ckpt_path)
             print(f"   ✅ Picked SWA (saved → {swa_ckpt_path})")
         else:
-            print(f"   ⚪ Picked best_ckpt (SWA val F1 lower)")
+            print(f"   ⚪ Picked best_ckpt (SWA val macro F1 lower)")
 
     per_class_f1 = compute_per_class_f1(test_labels, test_preds, cfg["model"]["num_classes"])
 
@@ -510,10 +518,10 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             "train_f1_at_best_val": train_f1_at_best,
             "swa_enabled": swa_enabled,
             "selected": selected,
-            "val_f1_vanilla": val_f1_best,
-            "val_f1_swa": val_f1_swa,
-            "test_f1_vanilla": test_m_best["f1"],
-            "test_f1_swa": test_f1_swa,
+            "val_metrics_vanilla": val_metrics_vanilla,
+            "val_metrics_swa": val_metrics_swa,
+            "test_metrics_vanilla": test_metrics_vanilla,
+            "test_metrics_swa": test_metrics_swa,
             "n_swa_avg": n_swa_avg}
  
  
@@ -611,25 +619,32 @@ def summarize_cv(results):
             print(f"  Stop epoch             : mean={se.mean():.1f}  range=[{se.min()},{se.max()}]")
 
     # ── SWA summary (when SWA enabled) ──────────────────────────────
+    # Report mean ± std cho vanilla vs SWA trên cả Acc, F1w, Macro F1 — vì user
+    # báo cáo Acc + F1w (paper convention), không chỉ macro F1.
     swa_results = [r for r in results if r.get("swa_enabled")]
     if swa_results:
         n_picked = sum(1 for r in swa_results if r.get("selected") == "swa")
-        van_val  = np.array([r["val_f1_vanilla"]  for r in swa_results])
-        swa_val  = np.array([r["val_f1_swa"]      for r in swa_results if r["val_f1_swa"] is not None])
-        van_te   = np.array([r["test_f1_vanilla"] for r in swa_results])
-        swa_te   = np.array([r["test_f1_swa"]     for r in swa_results if r["test_f1_swa"] is not None])
-        n_avg    = np.array([r["n_swa_avg"]       for r in swa_results])
+        n_avg = np.array([r["n_swa_avg"] for r in swa_results])
         print(f"\n\U0001fab6 SWA summary (5-fold):")
-        print(f"  Picked SWA           : {n_picked}/{len(swa_results)} folds")
-        print(f"  Vanilla val F1       : mean={van_val.mean():.4f}  std={van_val.std(ddof=0):.4f}")
-        if swa_val.size:
-            print(f"  SWA     val F1       : mean={swa_val.mean():.4f}  std={swa_val.std(ddof=0):.4f}  "
-                  f"Δ={swa_val.mean()-van_val.mean():+.4f}")
-        print(f"  Vanilla test F1      : mean={van_te.mean():.4f}  std={van_te.std(ddof=0):.4f}")
-        if swa_te.size:
-            print(f"  SWA     test F1      : mean={swa_te.mean():.4f}  std={swa_te.std(ddof=0):.4f}  "
-                  f"Δ={swa_te.mean()-van_te.mean():+.4f}")
-        print(f"  SWA snapshots/fold   : mean={n_avg.mean():.1f}  range=[{int(n_avg.min())},{int(n_avg.max())}]")
+        print(f"  Picked SWA: {n_picked}/{len(swa_results)} folds  ·  "
+              f"snapshots/fold mean={n_avg.mean():.1f}  range=[{int(n_avg.min())},{int(n_avg.max())}]")
+        print(f"  {'split':<6s} {'metric':<14s} {'vanilla mean ± std':>22s} {'SWA mean ± std':>22s} {'Δ mean':>10s} {'Δ std':>10s}")
+        for split, key_vanilla, key_swa in [
+            ("val",  "val_metrics_vanilla",  "val_metrics_swa"),
+            ("test", "test_metrics_vanilla", "test_metrics_swa"),
+        ]:
+            for metric in ("accuracy", "f1_weighted", "f1"):
+                van = np.array([r[key_vanilla].get(metric, 0) for r in swa_results])
+                swa = np.array([r[key_swa].get(metric, 0) for r in swa_results
+                                if r.get(key_swa) is not None])
+                if not swa.size:
+                    continue
+                d_mean = swa.mean() - van.mean()
+                d_std  = swa.std(ddof=0) - van.std(ddof=0)
+                print(f"  {split:<6s} {metric:<14s}  "
+                      f"{van.mean():.4f} ± {van.std(ddof=0):.4f}    "
+                      f"{swa.mean():.4f} ± {swa.std(ddof=0):.4f}  "
+                      f"{d_mean:+.4f}  {d_std:+.4f}")
 
 
 def main():
