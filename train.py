@@ -9,6 +9,7 @@ import json
 import os
 import numpy as np
 import torch
+from torch.optim.swa_utils import AveragedModel, SWALR
 from torch.utils.data import DataLoader, WeightedRandomSampler
 import yaml
 from sklearn.metrics import f1_score
@@ -26,6 +27,11 @@ from src.utils import (
 )
  
 _DEFAULT_subtype_names = ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
+
+
+def _inner_model(model):
+    """Unwrap AveragedModel để truy cập compute_loss / cross_attn / gat."""
+    return model.module if hasattr(model, "module") else model
 
 
 def parse_args():
@@ -93,11 +99,12 @@ def train_epoch(model, loader, optimizer, graph, device, scheduler=None, minorit
 @torch.no_grad()
 def eval_epoch(model, loader, graph, device, return_predictions=False):
     model.eval()
+    inner = _inner_model(model)
     total_loss, n_batches, all_preds, all_labels = 0.0, 0, [], []
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
         logits, attn_info = model(batch, graph)
-        total_loss += model.compute_loss(logits, batch["label"], attn_info).item()
+        total_loss += inner.compute_loss(logits, batch["label"], attn_info).item()
         n_batches += 1
         all_preds.extend(logits.argmax(-1).cpu().tolist())
         all_labels.extend(batch["label"].cpu().tolist())
@@ -262,10 +269,32 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     else:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["training"]["epochs"])
         step_per_batch = False
- 
+
+    # ── Stochastic Weight Averaging (Izmailov 2018) ──
+    # Trong SWA phase: tắt main scheduler, dùng SWALR (cosine anneal → swa_lr).
+    # Model dùng LayerNorm only → không cần torch.optim.swa_utils.update_bn().
+    swa_cfg = (cfg["training"].get("swa") or {})
+    swa_enabled = bool(swa_cfg.get("enabled", False))
+    swa_start = int(swa_cfg.get("start_epoch", 40))
+    swa_lr_val = float(swa_cfg.get("swa_lr", base_lr * 0.5))
+    swa_anneal = int(swa_cfg.get("anneal_epochs", 5))
+    swa_update_freq = max(1, int(swa_cfg.get("update_freq", 1)))
+    swa_model = None
+    swa_scheduler = None  # created lazily ở swa_start để không disturb OneCycleLR init
+    if swa_enabled:
+        swa_model = AveragedModel(model)
+        print(
+            f"🪶 SWA enabled: start_epoch={swa_start}, swa_lr={swa_lr_val:.2e}, "
+            f"anneal_epochs={swa_anneal}, update_freq={swa_update_freq}"
+        )
+
+    # EarlyStopping — bump min_epochs nếu SWA cần collection window
+    min_epochs_es = cfg["training"].get("min_epochs", 0)
+    if swa_enabled:
+        min_epochs_es = max(min_epochs_es, swa_start + swa_anneal + 5)
     early_stop = EarlyStopping(
         patience=cfg["training"]["patience"],
-        min_epochs=cfg["training"].get("min_epochs", 0),
+        min_epochs=min_epochs_es,
     )
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"\n\U0001f9e0 {fold_name} params: {n_params:,}")
@@ -292,17 +321,33 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         json.dump(edge_stats, f, indent=2)
  
     for epoch in range(1, cfg["training"]["epochs"] + 1):
+        use_swa_phase = swa_enabled and epoch >= swa_start
+        # SWA phase: tắt main scheduler để SWALR điều khiển LR
+        eff_scheduler = None if use_swa_phase else (scheduler if step_per_batch else None)
         tr = train_epoch(
             model,
             train_loader,
             optimizer,
             graph,
             device,
-            scheduler=scheduler if step_per_batch else None,
+            scheduler=eff_scheduler,
             minority_aug_cfg=cfg["training"].get("minority_augmentation", {"enabled": True}),
         )
         vl = eval_epoch(model, val_loader, graph, device)
-        if not step_per_batch:
+        if use_swa_phase:
+            if swa_scheduler is None:
+                # Lazy-create at swa_start để anneal từ optimizer's current LR
+                # (vẫn còn onecycle warmup value) → swa_lr.
+                swa_scheduler = SWALR(
+                    optimizer,
+                    swa_lr=swa_lr_val,
+                    anneal_epochs=swa_anneal,
+                    anneal_strategy="cos",
+                )
+            swa_scheduler.step()
+            if (epoch - swa_start) % swa_update_freq == 0:
+                swa_model.update_parameters(model)
+        elif not step_per_batch:
             scheduler.step()
  
         history["train_loss"].append(tr["loss"])
@@ -343,25 +388,64 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             print(f"\u23f9\ufe0f  Early stopping at epoch {epoch} ({fold_name})")
             break
  
+    # ── Load best_ckpt (vanilla) + eval ──
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
-    test_m, test_labels, test_preds = eval_epoch(model, test_loader, graph, device, return_predictions=True)
+    test_m_best, test_labels_best, test_preds_best = eval_epoch(
+        model, test_loader, graph, device, return_predictions=True
+    )
+    val_m_best = eval_epoch(model, val_loader, graph, device)
+    val_f1_best = val_m_best["f1"]
+
+    # ── SWA: evaluate, compare, pick winner (val F1) ──
+    eval_model = model
+    selected = "best_ckpt"
+    test_m, test_labels, test_preds = test_m_best, test_labels_best, test_preds_best
+    selected_val_f1 = val_f1_best
+    val_f1_swa = None
+    test_f1_swa = None
+    n_swa_avg = 0
+    if swa_enabled and swa_model is not None:
+        # Model dùng LayerNorm (không có BN running stats) → skip update_bn.
+        swa_val_m = eval_epoch(swa_model, val_loader, graph, device)
+        swa_test_m, swa_test_labels, swa_test_preds = eval_epoch(
+            swa_model, test_loader, graph, device, return_predictions=True
+        )
+        val_f1_swa = swa_val_m["f1"]
+        test_f1_swa = swa_test_m["f1"]
+        n_swa_avg = int(swa_model.n_averaged.item())
+        print(f"\n🪶 SWA evaluation - {fold_name}  (averaged {n_swa_avg} snapshots)")
+        print(f"   best_ckpt : val F1={val_f1_best:.4f}  test F1={test_m_best['f1']:.4f}")
+        print(f"   swa       : val F1={val_f1_swa:.4f}  test F1={test_f1_swa:.4f}")
+        if val_f1_swa >= val_f1_best:
+            eval_model = swa_model
+            selected = "swa"
+            test_m = swa_test_m
+            test_labels = swa_test_labels
+            test_preds = swa_test_preds
+            selected_val_f1 = val_f1_swa
+            swa_ckpt_path = ckpt_path.replace(".pt", "_swa.pt")
+            torch.save({"model": swa_model.state_dict(), "n_averaged": n_swa_avg}, swa_ckpt_path)
+            print(f"   ✅ Picked SWA (saved → {swa_ckpt_path})")
+        else:
+            print(f"   ⚪ Picked best_ckpt (SWA val F1 lower)")
+
     per_class_f1 = compute_per_class_f1(test_labels, test_preds, cfg["model"]["num_classes"])
 
     # ── Threshold calibration (val-fitted, applied to test) ───────────────
     num_classes = cfg["model"]["num_classes"]
-    val_probs, val_labels_arr = collect_probabilities(model, val_loader, graph, device)
+    val_probs, val_labels_arr = collect_probabilities(eval_model, val_loader, graph, device)
     offsets = find_optimal_thresholds(val_probs, val_labels_arr, num_classes)
-    test_probs, _ = collect_probabilities(model, test_loader, graph, device)
+    test_probs, _ = collect_probabilities(eval_model, test_loader, graph, device)
     test_preds_cal = apply_threshold_offsets(test_probs, offsets)
     test_m_cal = compute_metrics(test_labels, test_preds_cal.tolist())
     per_class_f1_cal = compute_per_class_f1(test_labels, test_preds_cal.tolist(), num_classes)
- 
+
     gain = test_m_cal["f1"] - test_m["f1"]
-    print(f"\n📊 Test - {fold_name}")
+    print(f"\n📊 Test - {fold_name}  (selected={selected})")
     print_metrics(test_m,     "Raw  ")
     print_metrics(test_m_cal, "Cal  ")
-    print(f"✅ Best val F1: {best_f1:.4f}  |  Calibration gain: {gain:+.4f}")
+    print(f"✅ Selected val F1: {selected_val_f1:.4f}  |  Calibration gain: {gain:+.4f}")
     print(f"✅ Test F1  raw={test_m['f1']:.4f}  cal={test_m_cal['f1']:.4f}")
  
     plot_training_curves(history, path=os.path.join(viz_dir, "training_curves.png"), title=fold_name)
@@ -382,17 +466,18 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         path=os.path.join(viz_dir, "confusion_matrix_test_absolute.csv"),
         class_names=subtype_names[:cfg["model"]["num_classes"]])
  
-    attn = collect_attn_stats(model, test_loader, graph, device)
+    attn = collect_attn_stats(eval_model, test_loader, graph, device)
     print(f"\n\U0001f50d Attention Stats - {fold_name}")
     print(f"   cpg  : std={attn['cpg_std']:.4f}  max={attn['cpg_max']:.4f}  nnz={attn['cpg_nnz']:.3f}  global_w={attn['modality_w_cpg']:.3f}")
     print(f"   mirna: std={attn['mirna_std']:.4f}  max={attn['mirna_max']:.4f}  nnz={attn['mirna_nnz']:.3f}  global_w={attn['modality_w_mirna']:.3f}")
 
-    # Phase 2.1a — FiLM γ, β values (init γ=1, β=0)
+    # Phase 2.1a — FiLM γ, β values (init γ=1, β=0). Đọc từ selected model.
+    inner_eval = _inner_model(eval_model)
     film = {
-        "cpg_gamma":   model.gat.film_cpg_gamma.item(),
-        "cpg_beta":    model.gat.film_cpg_beta.item(),
-        "mirna_gamma": model.gat.film_mirna_gamma.item(),
-        "mirna_beta":  model.gat.film_mirna_beta.item(),
+        "cpg_gamma":   inner_eval.gat.film_cpg_gamma.item(),
+        "cpg_beta":    inner_eval.gat.film_cpg_beta.item(),
+        "mirna_gamma": inner_eval.gat.film_mirna_gamma.item(),
+        "mirna_beta":  inner_eval.gat.film_mirna_beta.item(),
     }
     print(f"\n\U0001f3da️  FiLM (final, baseline γ=1 β=0) - {fold_name}")
     print(f"   cpg  : γ={film['cpg_gamma']:+.4f}  β={film['cpg_beta']:+.4f}")
@@ -415,14 +500,21 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         best_idx = int(np.argmax(history["val_f1"]))
         train_f1_at_best = history["train_f1"][best_idx]
 
-    return {"fold": fold_name, "best_val_f1": best_f1, "test_metrics": test_m,
+    return {"fold": fold_name, "best_val_f1": selected_val_f1, "test_metrics": test_m,
             "test_metrics_calibrated": test_m_cal, "per_class_f1_calibrated": per_class_f1_cal,
             "threshold_offsets": offsets.tolist(),
             "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1,
             "per_class_f1": per_class_f1, "attn": attn, "film": film,
             "best_val_loss": best_loss, "stop_epoch": epoch,
             "n_params": n_params, "dims": dims,
-            "train_f1_at_best_val": train_f1_at_best}
+            "train_f1_at_best_val": train_f1_at_best,
+            "swa_enabled": swa_enabled,
+            "selected": selected,
+            "val_f1_vanilla": val_f1_best,
+            "val_f1_swa": val_f1_swa,
+            "test_f1_vanilla": test_m_best["f1"],
+            "test_f1_swa": test_f1_swa,
+            "n_swa_avg": n_swa_avg}
  
  
 def summarize_cv(results):
@@ -517,8 +609,29 @@ def summarize_cv(results):
         if stop_epochs:
             se = np.array(stop_epochs)
             print(f"  Stop epoch             : mean={se.mean():.1f}  range=[{se.min()},{se.max()}]")
- 
- 
+
+    # ── SWA summary (when SWA enabled) ──────────────────────────────
+    swa_results = [r for r in results if r.get("swa_enabled")]
+    if swa_results:
+        n_picked = sum(1 for r in swa_results if r.get("selected") == "swa")
+        van_val  = np.array([r["val_f1_vanilla"]  for r in swa_results])
+        swa_val  = np.array([r["val_f1_swa"]      for r in swa_results if r["val_f1_swa"] is not None])
+        van_te   = np.array([r["test_f1_vanilla"] for r in swa_results])
+        swa_te   = np.array([r["test_f1_swa"]     for r in swa_results if r["test_f1_swa"] is not None])
+        n_avg    = np.array([r["n_swa_avg"]       for r in swa_results])
+        print(f"\n\U0001fab6 SWA summary (5-fold):")
+        print(f"  Picked SWA           : {n_picked}/{len(swa_results)} folds")
+        print(f"  Vanilla val F1       : mean={van_val.mean():.4f}  std={van_val.std(ddof=0):.4f}")
+        if swa_val.size:
+            print(f"  SWA     val F1       : mean={swa_val.mean():.4f}  std={swa_val.std(ddof=0):.4f}  "
+                  f"Δ={swa_val.mean()-van_val.mean():+.4f}")
+        print(f"  Vanilla test F1      : mean={van_te.mean():.4f}  std={van_te.std(ddof=0):.4f}")
+        if swa_te.size:
+            print(f"  SWA     test F1      : mean={swa_te.mean():.4f}  std={swa_te.std(ddof=0):.4f}  "
+                  f"Δ={swa_te.mean()-van_te.mean():+.4f}")
+        print(f"  SWA snapshots/fold   : mean={n_avg.mean():.1f}  range=[{int(n_avg.min())},{int(n_avg.max())}]")
+
+
 def main():
     args = parse_args()
     with open(args.config) as f:

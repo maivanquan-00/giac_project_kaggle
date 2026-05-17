@@ -70,6 +70,15 @@ training:
     enabled: true
     class: [1, 3, 4]   # Stage 2B: thêm EBV=4 (GS=1, HM-SNV=3, EBV=4)
     noise_std: 0.10
+  # Stochastic Weight Averaging (Izmailov 2018) — reduces fold-to-fold variance
+  # by averaging weights from late-training epochs. No BatchNorm in model →
+  # `update_bn` skipped. SWA + best-ckpt compared on val F1; pick higher.
+  swa:
+    enabled: true
+    start_epoch: 40       # epoch để bắt đầu collect (after onecycle warmup)
+    swa_lr: 5.0e-5        # constant LR cho SWA phase (half of base_lr)
+    anneal_epochs: 5      # cosine anneal từ current LR → swa_lr
+    update_freq: 1        # update_parameters mỗi N epoch
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"

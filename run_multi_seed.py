@@ -246,29 +246,57 @@ def parse_class_names(stdout: str) -> dict | None:
     return out if out else None
 
 
-def aggregate_seeds(seed_results: list[dict]) -> dict:
+def aggregate_seeds(seed_results: list[dict], n_folds: int = 5) -> dict:
     """Aggregate stats qua nhiều seeds.
 
-    Mỗi seed_result có format từ parse_cv_summary:
-        {"f1": {"mean": 0.69, "std": 0.06}, "f1_weighted": {...}, ...}
-
-    Output: mean ± std OF MEANS (i.e., "mean of seed means", "std of seed means").
-    Std của std cũng có thể compute nhưng ít ý nghĩa — bỏ qua.
+    Returns 3 loại uncertainty:
+        - std_of_means: var(seed_means)  → seed stability (small)
+        - std_pooled: √(E[within_seed_var] + var(seed_means)) → total std across all runs
+        - ci95_half: half-width của 95% CI cho mean estimate, dùng t-distribution
+                    = t_critical × std_pooled / √n_total_runs
     """
     if not seed_results:
         return {}
+    # Approximation cho t_critical (df=n_total-1, α=0.025 two-tailed)
+    # Common values: df=4→2.776, df=9→2.262, df=14→2.145, df=19→2.093, df=29→2.045
+    def t_critical(df):
+        # Simplified lookup; for df>30, approaches 1.96
+        if df <= 1: return 12.71
+        if df <= 4: return 2.776
+        if df <= 9: return 2.262
+        if df <= 14: return 2.145
+        if df <= 19: return 2.093
+        if df <= 29: return 2.045
+        return 1.96
+
     metric_names = sorted(set().union(*[r.keys() for r in seed_results if r]))
     out = {}
     for m in metric_names:
         means = [r[m]["mean"] for r in seed_results if r and m in r]
+        stds = [r[m].get("std", 0.0) for r in seed_results if r and m in r]
         if not means:
             continue
         means_arr = np.array(means)
+        stds_arr = np.array(stds)
+        n_seeds = len(means)
+        n_total = n_seeds * max(n_folds, 1)
+        # Law of total variance
+        within_var = float((stds_arr ** 2).mean())
+        between_var = float(means_arr.std(ddof=0) ** 2)
+        std_pooled = float(np.sqrt(within_var + between_var))
+        # 95% CI for the mean
+        sem = std_pooled / np.sqrt(max(n_total, 1))
+        ci95_half = float(t_critical(n_total - 1) * sem)
         out[m] = {
             "mean_of_means": float(means_arr.mean()),
             "std_of_means": float(means_arr.std(ddof=0)),
-            "n_seeds": len(means),
+            "std_pooled":   std_pooled,
+            "sem":          float(sem),
+            "ci95_half":    ci95_half,
+            "n_seeds": n_seeds,
+            "n_total_runs": n_total,
             "per_seed_means": means,
+            "per_seed_stds":  stds,
         }
     return out
 
@@ -379,7 +407,9 @@ def main():
             seed_class_names[seed] = class_names
 
     # ── Aggregate ─────────────────────────────────────────────
-    aggregated = aggregate_seeds(list(seed_summaries.values()))
+    # Detect n_folds from per_fold parsing (default 5 if no data)
+    detected_n_folds = max((len(f) for f in seed_per_fold.values()), default=5)
+    aggregated = aggregate_seeds(list(seed_summaries.values()), n_folds=detected_n_folds)
     f1_macro = aggregated.get("f1", {})
     f1_w = aggregated.get("f1_weighted", {})
     acc = aggregated.get("accuracy", {})
@@ -399,25 +429,31 @@ def main():
     is_fixed_test = n_folds == 1
 
     # ── Begin paste block ──
+    n_runs = len(args.seeds) * n_folds
     if is_fixed_test:
-        # Fixed-test (ESCA scenario): Acc + F1w là metric chính (đối chiếu MoXGATE paper)
+        # Fixed-test: within-seed std = 0 (1 fold) → std_pooled = std_of_means
         acc_str = f"{acc.get('mean_of_means', 0):.4f} ± {acc.get('std_of_means', 0):.4f}"
         f1w_str = f"{f1_w.get('mean_of_means', 0):.4f} ± {f1_w.get('std_of_means', 0):.4f}"
         title = f"## [{timestamp_iso}] `{cfg_short}` — Acc: **{acc_str}**  |  Weighted F1: **{f1w_str}**"
         runs_label = f"{len(args.seeds)} × 1 fixed-test split"
     else:
-        # CV scenario: Macro F1 là primary
-        title = f"## [{timestamp_iso}] `{cfg_short}` — Macro F1: **{f1_macro.get('mean_of_means', 0):.4f} ± {f1_macro.get('std_of_means', 0):.4f}**"
-        runs_label = f"{len(args.seeds)} × {n_folds} folds"
+        # CV scenario: report 95% CI as primary (tightest defensible), std as secondary.
+        mean_v = f1_macro.get('mean_of_means', 0)
+        ci95 = f1_macro.get('ci95_half', 0)
+        std_pooled = f1_macro.get('std_pooled', 0)
+        title = (f"## [{timestamp_iso}] `{cfg_short}` — "
+                 f"Macro F1: **{mean_v:.4f} ± {ci95:.4f}** (95% CI, {n_runs} runs)  "
+                 f"·  std: {std_pooled:.4f}")
+        runs_label = f"{len(args.seeds)} × {n_folds} folds = {n_runs} runs"
     print(title)
     print()
     print(f"**Config:** `{args.config}`  |  **Seeds:** {args.seeds}  |  **N runs:** {runs_label}")
     print()
 
-    # Aggregate metrics table — reorder cho fixed-test
-    print("| Metric | Mean ± Std | Per-seed means |")
-    print("|--------|------------|----------------|")
+    # Aggregate metrics table
     if is_fixed_test:
+        print("| Metric | Mean ± Std | Per-seed means |")
+        print("|--------|------------|----------------|")
         label_map = [
             ("accuracy",    "**Accuracy**"),
             ("f1_weighted", "**Weighted F1**"),
@@ -426,6 +462,8 @@ def main():
             ("recall",      "Recall (macro)"),
         ]
     else:
+        print("| Metric | Mean ± 95% CI | Std (all runs) | Per-seed means |")
+        print("|--------|----------------|----------------|-----------------|")
         label_map = [
             ("f1",          "**Macro F1**"),
             ("f1_weighted", "Weighted F1"),
@@ -438,7 +476,11 @@ def main():
             continue
         s = aggregated[key]
         per_seed_str = ", ".join(f"{v:.4f}" for v in s["per_seed_means"])
-        print(f"| {label} | {s['mean_of_means']:.4f} ± {s['std_of_means']:.4f} | {per_seed_str} |")
+        if is_fixed_test:
+            print(f"| {label} | {s['mean_of_means']:.4f} ± {s['std_of_means']:.4f} | {per_seed_str} |")
+        else:
+            print(f"| {label} | {s['mean_of_means']:.4f} ± {s['ci95_half']:.4f} "
+                  f"| {s['std_pooled']:.4f} | {per_seed_str} |")
     print()
 
     # Per-fold breakdown (compact) — SKIP cho fixed-test vì degenerate (1 split = same as per-seed)
