@@ -1,7 +1,7 @@
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_lgg"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
-  emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/LGG_extend"
+  emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/LGG_extend/TCGA_emQTL_LGG.txt"   # Kaggle auto-extract → nested folder cùng tên
   manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
   cancer_types: ["LGG"]
 

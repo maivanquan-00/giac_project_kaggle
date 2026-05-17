@@ -216,7 +216,10 @@ def _load_emqtl_edges(
 
     for ct in cancer_types:
         fpath = os.path.join(giac_dir, f"TCGA_emQTL_{ct}.txt")
-        if not os.path.exists(fpath):
+        if not os.path.isfile(fpath):
+            # Handle: path không tồn tại, OR là directory (case LGG_extend/TCGA_emQTL_LGG.txt là folder)
+            if os.path.isdir(fpath):
+                print(f"   ⚠️  TCGA_emQTL_{ct}.txt là DIRECTORY (not file) — skip emQTL cho {ct}")
             continue
 
         header_df = pd.read_csv(fpath, sep="\t", nrows=2)
@@ -260,7 +263,7 @@ def _load_ppi_edges(
     score_thresh: int = 700,
 ) -> torch.Tensor | None:
     """Load STRING PPI edges. Returns None when files missing or no edges."""
-    if not os.path.exists(links_file) or not os.path.exists(alias_file):
+    if not os.path.isfile(links_file) or not os.path.isfile(alias_file):
         return None
 
     alias_df = pd.read_csv(alias_file, sep="\t", comment="#",
@@ -328,7 +331,7 @@ def _load_mirna_edges(
     max_targets_per_mirna: int = 50,
 ) -> torch.Tensor | None:
  
-    if not os.path.exists(mti_file):
+    if not os.path.isfile(mti_file):
         return None
 
     df = pd.read_csv(mti_file)
@@ -471,13 +474,13 @@ def _identity_edges(n_nodes: int) -> torch.Tensor:
 # ─────────────────────────────────────────────
  
 def _load_reactome_edges(reactome_file, hgnc_file, gene_idx, max_pathway_size=50, max_edges=20):
-    if not os.path.exists(reactome_file):
+    if not os.path.isfile(reactome_file):
         print("   ⚠️  Ensembl2Reactome_All_Levels.txt không tìm thấy")
         return None
  
     # Ensembl → gene symbol map
     ensembl_to_sym = {}
-    if os.path.exists(hgnc_file):
+    if os.path.isfile(hgnc_file):
         try:
             hgnc = pd.read_csv(hgnc_file, sep="\t", low_memory=False,
                                usecols=["symbol", "ensembl_gene_id"])
@@ -552,8 +555,8 @@ def _load_cpg_island_edges(
         "Island+Shore" — Island + N_Shore + S_Shore
         "all"          — mọi probe có UCSC_CpG_Islands_Name không rỗng
     """
-    if not os.path.exists(manifest_file):
-        print("   ⚠️  Illumina manifest không tìm thấy")
+    if not os.path.isfile(manifest_file):
+        print("   ⚠️  Illumina manifest không tìm thấy (hoặc là directory)")
         return None
 
     # File có header [Heading]/[Assay] — tìm dòng bắt đầu bằng "IlmnID"
@@ -652,7 +655,7 @@ def _load_cpg_island_edges(
 # ─────────────────────────────────────────────
  
 def _load_mirna_family_edges(family_file, mirna_idx):
-    if not os.path.exists(family_file):
+    if not os.path.isfile(family_file):
         print("   ⚠️  miR_Family_Info.txt không tìm thấy")
         return None
  

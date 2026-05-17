@@ -32,10 +32,10 @@ graph:
   cpg_island_relation: "Island"
 
 model:
-  hidden_dim:  96                # Phase 4d sweet spot (sync GI combined CV)
+  hidden_dim:  96                # Phase 4d sweet spot
   gat_heads:   4
   gat_layers:  2
-  gat_dropout: 0.3                # Phase 4c (sync GI combined CV)
+  gat_dropout: 0.4                # UCEC-tuned: 0.3→0.4 (counter overfit, train-val gap 0.088)
   topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4
