@@ -73,10 +73,16 @@ training:
   # Stochastic Weight Averaging (Izmailov 2018) — reduces fold-to-fold variance
   # by averaging weights from late-training epochs. No BatchNorm in model →
   # `update_bn` skipped. SWA + best-ckpt compared on val F1; pick higher.
+  #
+  # Tuning history:
+  # - v1 (start=40, lr=5e-5): SWA val F1 thấp hơn vanilla ~0.02 vì OneCycle đã decay
+  #   xuống ~5e-5 ở epoch 40 → snapshots gần identical → SWA = blurry vanilla.
+  # - v2 (start=30, lr=1e-4): start sớm hơn để LR còn cao khi collect (epoch 30
+  #   OneCycle LR ≈ 2e-4), anneal về base_lr → snapshots diverse hơn.
   swa:
     enabled: true
-    start_epoch: 40       # epoch để bắt đầu collect (after onecycle warmup)
-    swa_lr: 5.0e-5        # constant LR cho SWA phase (half of base_lr)
+    start_epoch: 30       # epoch bắt đầu collect (OneCycle peak ở epoch 15)
+    swa_lr: 1.0e-4        # = base_lr; cần đủ cao để snapshots diverse
     anneal_epochs: 5      # cosine anneal từ current LR → swa_lr
     update_freq: 1        # update_parameters mỗi N epoch
 
