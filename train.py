@@ -506,7 +506,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         if len(per_ct_f1) > 1:
             if swa_enabled and swa_model is not None:
                 print(f"\n\U0001f9ec Per-cancer-type F1 - {fold_name}  (vanilla → SWA)")
-                print(f"   {'Cancer':>8}  {'N':>5}  {'vanilla':>8}  {'SWA':>8}  {'Δ':>+8}")
+                print(f"   {'Cancer':>8}  {'N':>5}  {'vanilla':>8}  {'SWA':>8}  {'Δ':>8}")
                 for ct, info in sorted(per_ct_f1.items()):
                     v = per_ct_f1_vanilla.get(ct, {}).get("f1", 0)
                     s = info["f1"]
@@ -570,7 +570,7 @@ def summarize_cv(results):
         n_avg = np.array([r["n_swa_avg"] for r in swa_results])
         print(f"\n\U0001fab6 Vanilla vs SWA — 5-fold mean ± std  "
               f"({n_avg.mean():.1f} snapshots/fold avg, range=[{int(n_avg.min())},{int(n_avg.max())}])")
-        print(f"  {'split':<5s} {'metric':<4s}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>+8s}  {'Δ std':>+8s}")
+        print(f"  {'split':<5s} {'metric':<4s}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>8s}  {'Δ std':>8s}")
         for split, key_van, key_swa in [
             ("val ",  "val_metrics_vanilla",  "val_metrics_swa"),
             ("test",  "test_metrics_vanilla", "test_metrics_swa"),
@@ -595,7 +595,7 @@ def summarize_cv(results):
         if is_swa:
             all_per_ct_van = [r.get("per_ct_f1_vanilla", {}) for r in results]
             print(f"\n\U0001f9ec Per-cancer-type F1 (5-fold mean ± std) — vanilla vs SWA:")
-            print(f"  {'Cancer':>8}  {'N/fold':>6}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>+8s}")
+            print(f"  {'Cancer':>8}  {'N/fold':>6}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>8s}")
             for ct in unique_cts:
                 van_vals = np.array([d[ct]["f1"] for d in all_per_ct_van if ct in d])
                 sw_vals  = np.array([d[ct]["f1"] for d in all_per_ct     if ct in d])
@@ -620,7 +620,7 @@ def summarize_cv(results):
     if num_classes > 0:
         if is_swa:
             print(f"\n🎯 Per-class F1 (5-fold mean ± std) — vanilla vs SWA:")
-            print(f"  {'Class':>5}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>+8s}")
+            print(f"  {'Class':>5}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>8s}")
             for class_idx in range(num_classes):
                 van = np.array([r["per_class_f1_vanilla"].get(class_idx, 0) for r in results
                                 if r.get("per_class_f1_vanilla")])

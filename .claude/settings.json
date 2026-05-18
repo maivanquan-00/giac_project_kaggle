@@ -14,7 +14,9 @@
       "Bash(ls -la /kaggle/input/datasets/maivanquan/datn-2025-2/data_final 2>/dev/null | head -5 || echo \"Local: not Kaggle env\")",
       "Read(//kaggle/input/datasets/maivanquan/datn-2025-2/**)",
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
-      "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('run_multi_seed.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK both files'\\)\")"
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('run_multi_seed.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK both files'\\)\")",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('run_multi_seed.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(python -c \"x = 'Δ'; print\\(f'   {x:>8}'\\); y='Δ mean'; print\\(f'  {y:>8s}'\\)\")"
     ]
   }
 }

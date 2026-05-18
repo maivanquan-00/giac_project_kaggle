@@ -542,13 +542,13 @@ def main():
         title = f"## [{timestamp_iso}] `{cfg_short}` — Acc: **{acc_str}**  |  Weighted F1: **{f1w_str}**"
         runs_label = f"{len(args.seeds)} × 1 fixed-test split"
     else:
-        # CV scenario: report 95% CI as primary (tightest defensible), std as secondary.
+        # CV scenario: dùng pooled std (15-run) làm primary metric.
+        # User preference: KHÔNG dùng 95% CI để tránh "metric spinning" — std là
+        # convention chuẩn so với MoXGATE baseline (cũng dùng std).
         mean_v = f1_macro.get('mean_of_means', 0)
-        ci95 = f1_macro.get('ci95_half', 0)
         std_pooled = f1_macro.get('std_pooled', 0)
         title = (f"## [{timestamp_iso}] `{cfg_short}` — "
-                 f"Macro F1: **{mean_v:.4f} ± {ci95:.4f}** (95% CI, {n_runs} runs)  "
-                 f"·  std: {std_pooled:.4f}")
+                 f"Macro F1: **{mean_v:.4f} ± {std_pooled:.4f}** ({n_runs}-run std)")
         runs_label = f"{len(args.seeds)} × {n_folds} folds = {n_runs} runs"
     print(title)
     print()
@@ -567,12 +567,12 @@ def main():
             ("recall",      "Recall (macro)"),
         ]
     else:
-        print("| Metric | Mean ± 95% CI | Std (all runs) | Per-seed means |")
-        print("|--------|----------------|----------------|-----------------|")
+        print(f"| Metric | Mean ± std ({n_runs}-run) | Per-seed means |")
+        print("|--------|---------------------------|-----------------|")
         label_map = [
-            ("f1",          "**Macro F1**"),
-            ("f1_weighted", "Weighted F1"),
-            ("accuracy",    "Accuracy"),
+            ("accuracy",    "**Accuracy**"),
+            ("f1_weighted", "**Weighted F1**"),
+            ("f1",          "Macro F1"),
             ("precision",   "Precision (macro)"),
             ("recall",      "Recall (macro)"),
         ]
@@ -584,8 +584,8 @@ def main():
         if is_fixed_test:
             print(f"| {label} | {s['mean_of_means']:.4f} ± {s['std_of_means']:.4f} | {per_seed_str} |")
         else:
-            print(f"| {label} | {s['mean_of_means']:.4f} ± {s['ci95_half']:.4f} "
-                  f"| {s['std_pooled']:.4f} | {per_seed_str} |")
+            print(f"| {label} | {s['mean_of_means']:.4f} ± {s['std_pooled']:.4f} "
+                  f"| {per_seed_str} |")
     if is_swa:
         model_label = "SWA always-pick (v3)"
     else:
