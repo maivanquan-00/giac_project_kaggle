@@ -69,6 +69,12 @@ training:
     enabled: true
     class: [1, 4]      # Her2=1, Normal=4 — minority classes của BRCA
     noise_std: 0.10
+  # SWA v3 — keep OneCycle running, NO SWALR, always-pick. Vanilla preserved.
+  # Validated trên GI (Acc/F1w std giảm 22-25%) và UCEC (F1m std giảm 50%).
+  swa:
+    enabled: true
+    start_epoch: 30
+    update_freq: 1
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"

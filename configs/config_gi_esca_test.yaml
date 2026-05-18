@@ -76,6 +76,12 @@ training:
     enabled: true
     class: [1, 3, 4]
     noise_std: 0.10
+  # SWA v3 — keep OneCycle running, NO SWALR, always-pick. Vanilla preserved.
+  # Fixed-test scenario: SWA averaging vẫn hoạt động bình thường (1 split, full train run).
+  swa:
+    enabled: true
+    start_epoch: 30
+    update_freq: 1
 
 logging:
   save_dir:     "/kaggle/working/checkpoints_gi_esca_test/"

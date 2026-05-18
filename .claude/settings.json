@@ -17,7 +17,8 @@
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('run_multi_seed.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK both files'\\)\")",
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('run_multi_seed.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
       "Bash(python -c \"x = 'Δ'; print\\(f'   {x:>8}'\\); y='Δ mean'; print\\(f'  {y:>8s}'\\)\")",
-      "PowerShell(python -c \"import yaml; cfg = yaml.safe_load\\(open\\('configs/config.yaml', encoding='utf-8'\\)\\); print\\('use_manual:', cfg['training'].get\\('use_manual_focal_alpha'\\)\\); print\\('focal_alpha:', cfg['training']['focal_alpha']\\)\")"
+      "PowerShell(python -c \"import yaml; cfg = yaml.safe_load\\(open\\('configs/config.yaml', encoding='utf-8'\\)\\); print\\('use_manual:', cfg['training'].get\\('use_manual_focal_alpha'\\)\\); print\\('focal_alpha:', cfg['training']['focal_alpha']\\)\")",
+      "PowerShell(python -c \"import yaml; [print\\(f, ':', yaml.safe_load\\(open\\(f, encoding='utf-8'\\)\\)['training'].get\\('swa'\\)\\) for f in ['configs/config.yaml', 'configs/config_ucec.yaml', 'configs/config_brca.yaml', 'configs/config_kipan.yaml', 'configs/config_gi_stad_only.yaml', 'configs/config_lgg.yaml', 'configs/config_gi_esca_test.yaml']]\")"
     ]
   }
 }
