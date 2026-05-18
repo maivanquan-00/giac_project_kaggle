@@ -9,7 +9,7 @@ import json
 import os
 import numpy as np
 import torch
-from torch.optim.swa_utils import AveragedModel, SWALR
+from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader, WeightedRandomSampler
 import yaml
 from sklearn.metrics import f1_score
@@ -270,28 +270,28 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["training"]["epochs"])
         step_per_batch = False
 
-    # ── Stochastic Weight Averaging (Izmailov 2018) ──
-    # Trong SWA phase: tắt main scheduler, dùng SWALR (cosine anneal → swa_lr).
+    # ── Stochastic Weight Averaging (Izmailov 2018) — v3 pure ──
+    # v3: KEEP main scheduler (OneCycle) running để vanilla preserved. SWA chỉ
+    # collect averages on top, không dùng SWALR (vì SWALR pause OneCycle gây
+    # disturbance lớn — xem testnew.md run 2 vs 3). Tradeoff: snapshots ko diverse
+    # nếu OneCycle decay quá nhanh, nhưng baseline vanilla giữ nguyên.
     # Model dùng LayerNorm only → không cần torch.optim.swa_utils.update_bn().
     swa_cfg = (cfg["training"].get("swa") or {})
     swa_enabled = bool(swa_cfg.get("enabled", False))
-    swa_start = int(swa_cfg.get("start_epoch", 40))
-    swa_lr_val = float(swa_cfg.get("swa_lr", base_lr * 0.5))
-    swa_anneal = int(swa_cfg.get("anneal_epochs", 5))
+    swa_start = int(swa_cfg.get("start_epoch", 30))
     swa_update_freq = max(1, int(swa_cfg.get("update_freq", 1)))
     swa_model = None
-    swa_scheduler = None  # created lazily ở swa_start để không disturb OneCycleLR init
     if swa_enabled:
         swa_model = AveragedModel(model)
         print(
-            f"🪶 SWA enabled: start_epoch={swa_start}, swa_lr={swa_lr_val:.2e}, "
-            f"anneal_epochs={swa_anneal}, update_freq={swa_update_freq}"
+            f"🪶 SWA enabled (v3 pure — main scheduler keeps running): "
+            f"start_epoch={swa_start}, update_freq={swa_update_freq}"
         )
 
-    # EarlyStopping — bump min_epochs nếu SWA cần collection window
+    # EarlyStopping — bump min_epochs để đảm bảo SWA có collection window
     min_epochs_es = cfg["training"].get("min_epochs", 0)
     if swa_enabled:
-        min_epochs_es = max(min_epochs_es, swa_start + swa_anneal + 5)
+        min_epochs_es = max(min_epochs_es, swa_start + 10)
     early_stop = EarlyStopping(
         patience=cfg["training"]["patience"],
         min_epochs=min_epochs_es,
@@ -321,34 +321,23 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         json.dump(edge_stats, f, indent=2)
  
     for epoch in range(1, cfg["training"]["epochs"] + 1):
-        use_swa_phase = swa_enabled and epoch >= swa_start
-        # SWA phase: tắt main scheduler để SWALR điều khiển LR
-        eff_scheduler = None if use_swa_phase else (scheduler if step_per_batch else None)
+        # v3: main scheduler luôn chạy, SWA chỉ collect on top
         tr = train_epoch(
             model,
             train_loader,
             optimizer,
             graph,
             device,
-            scheduler=eff_scheduler,
+            scheduler=scheduler if step_per_batch else None,
             minority_aug_cfg=cfg["training"].get("minority_augmentation", {"enabled": True}),
         )
         vl = eval_epoch(model, val_loader, graph, device)
-        if use_swa_phase:
-            if swa_scheduler is None:
-                # Lazy-create at swa_start để anneal từ optimizer's current LR
-                # (vẫn còn onecycle warmup value) → swa_lr.
-                swa_scheduler = SWALR(
-                    optimizer,
-                    swa_lr=swa_lr_val,
-                    anneal_epochs=swa_anneal,
-                    anneal_strategy="cos",
-                )
-            swa_scheduler.step()
+        if not step_per_batch:
+            scheduler.step()
+        # SWA collect (không pause main scheduler — vanilla preserved)
+        if swa_enabled and epoch >= swa_start:
             if (epoch - swa_start) % swa_update_freq == 0:
                 swa_model.update_parameters(model)
-        elif not step_per_batch:
-            scheduler.step()
  
         history["train_loss"].append(tr["loss"])
         history["train_f1"].append(tr["f1"])
