@@ -56,7 +56,13 @@ training:
   weight_decay:          5.0e-3   # Stage 2A: tăng từ 3e-3 (chống overfit train F1=0.93)
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
-  focal_alpha:     [1.0, 4.5, 1.5, 8.0, 2.0]   # overridden at runtime by compute_class_weights (unless use_manual_focal_alpha=true)
+  # Manual focal_alpha boost HM-SNV để push F1 macro > 0.7.
+  # Auto-computed (use_manual=false): [0.077, 0.44, 0.35, 2.50, 1.63] (inverse freq)
+  # Manual boost: HM-SNV 2.5 → ~3.3 sau khi normalize bằng mean (raw 5.0).
+  # Logic trong train.py: nếu use_manual_focal_alpha=true → giữ giá trị này;
+  # nếu false → override bằng compute_class_weights (auto inverse freq).
+  use_manual_focal_alpha: true
+  focal_alpha:     [0.077, 0.44, 0.35, 5.0, 1.63]   # boost HM-SNV (idx 3) ~2x auto
   label_smoothing: 0.05
   balanced_sampler: false
   lambda_frobenius: 0.002          # Stage 2A: tăng từ 0.001 (bù W_out không bị reg)
