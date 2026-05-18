@@ -162,35 +162,37 @@ def parse_attention_stats(stdout: str) -> dict | None:
 
 
 def parse_overfit_indicator(stdout: str) -> dict | None:
-    """Extract '⚖️ Overfit indicator (5-fold)' block.
-
-    Format:
-        ⚖️  Overfit indicator (5-fold):
-          Best Val F1   : mean=0.7499  std=0.0532
-          Test  F1      : mean=0.6594  std=0.0154
-          Val−Test gap  : mean=+0.0905  (gap > 0.05 → overfit nghi ngờ)
-          Stop epoch    : mean=78.4  range=[60,96]
-    """
+    """Extract '⚖️ Overfit indicator' block. Supports cả format cũ (no SWA) và mới
+    (SWA enabled: 'Vanilla Val F1', 'Vanilla Test F1', 'SWA Test F1')."""
     marker = "Overfit indicator"
     pos = stdout.rfind(marker)
     if pos < 0:
         return None
-    section = stdout[pos:pos + 800]
+    section = stdout[pos:pos + 1200]
     out = {}
-    # NOTE: train.py prints "Best  Val F1" (2 spaces) and "Train F1 (at best val)" — match flexible.
     m = re.search(r"Train\s+F1\s*\(at best val\)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
     if m:
         out["train_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
-    m = re.search(r"Best\s+Val\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+    # Best Val F1 (old format) hoặc Vanilla Val F1 (new format SWA)
+    m = re.search(r"(?:Best|Vanilla)\s+Val\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
     if m:
         out["best_val_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
-    m = re.search(r"Test\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+    # Test F1 (old) hoặc Vanilla Test F1 (new). Match Vanilla first.
+    m = re.search(r"Vanilla\s+Test\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
     if m:
-        out["test_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
+        out["test_f1_vanilla"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
+        out["test_f1"] = out["test_f1_vanilla"]   # back-compat
+    else:
+        m = re.search(r"Test\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+        if m:
+            out["test_f1"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
+    m = re.search(r"SWA\s+Test\s+F1\s*:\s*mean=([\d.]+)\s+std=([\d.]+)", section)
+    if m:
+        out["test_f1_swa"] = {"mean": float(m.group(1)), "std": float(m.group(2))}
     m = re.search(r"Train.Val gap\s*:\s*mean=([+\-\d.]+)", section)
     if m:
         out["train_val_gap"] = float(m.group(1))
-    m = re.search(r"Val.Test gap\s*:\s*mean=([+\-\d.]+)", section)
+    m = re.search(r"Val.Test gap\s*(?:\(vanilla\))?\s*:\s*mean=([+\-\d.]+)", section)
     if m:
         out["val_test_gap"] = float(m.group(1))
     m = re.search(r"Stop epoch\s*:\s*mean=([\d.]+)\s+range=\[(\d+),(\d+)\]", section)
@@ -200,6 +202,53 @@ def parse_overfit_indicator(stdout: str) -> dict | None:
             "min": int(m.group(2)), "max": int(m.group(3)),
         }
     return out if out else None
+
+
+def parse_vanilla_vs_swa(stdout: str) -> dict | None:
+    """Extract '🪶 Vanilla vs SWA' comparison block từ summarize_cv.
+
+    Format (new, when SWA enabled):
+        🪶 Vanilla vs SWA — 5-fold mean ± std  (40.6 snapshots/fold avg, range=[20,59])
+          split metric          vanilla              SWA          Δ mean    Δ std
+          val  Acc    0.8716 ± 0.0270  0.8680 ± 0.0260  -0.0037  -0.0010
+          ...
+          test F1m   ...
+
+    Returns: {
+      "val":  {"accuracy": {"vanilla_mean": ..., "vanilla_std": ..., "swa_mean": ..., "swa_std": ...}, ...},
+      "test": {...},
+      "n_swa_avg_mean": float, "n_swa_avg_min": int, "n_swa_avg_max": int,
+    }
+    """
+    marker = "Vanilla vs SWA"
+    pos = stdout.rfind(marker)
+    if pos < 0:
+        return None
+    section = stdout[pos:pos + 2000]
+    # Header với n_swa_avg
+    m = re.search(r"\(([\d.]+)\s+snapshots/fold avg,\s*range=\[(\d+),(\d+)\]\)", section)
+    n_avg_mean = float(m.group(1)) if m else None
+    n_avg_min = int(m.group(2)) if m else None
+    n_avg_max = int(m.group(3)) if m else None
+    # Data rows
+    rows = re.findall(
+        r"^\s+(val|test)\s+(Acc|F1w|F1m)\s+([\d.]+)\s*±\s*([\d.]+)\s+([\d.]+)\s*±\s*([\d.]+)\s+([+\-][\d.]+)\s+([+\-][\d.]+)",
+        section, re.MULTILINE,
+    )
+    if not rows:
+        return None
+    metric_map = {"Acc": "accuracy", "F1w": "f1_weighted", "F1m": "f1"}
+    out = {"val": {}, "test": {}}
+    for split, mlabel, vm, vs, sm, ss, _dm, _ds in rows:
+        out[split][metric_map[mlabel]] = {
+            "vanilla_mean": float(vm), "vanilla_std": float(vs),
+            "swa_mean":     float(sm), "swa_std":     float(ss),
+        }
+    if n_avg_mean is not None:
+        out["n_swa_avg_mean"] = n_avg_mean
+        out["n_swa_avg_min"]  = n_avg_min
+        out["n_swa_avg_max"]  = n_avg_max
+    return out
 
 
 def parse_per_class_f1(stdout: str) -> dict | None:
@@ -244,6 +293,56 @@ def parse_class_names(stdout: str) -> dict | None:
     for idx, name in rows:
         out[idx] = name
     return out if out else None
+
+
+def aggregate_vanilla_vs_swa(seed_vs_data: dict, n_folds: int = 5) -> dict | None:
+    """Aggregate vanilla vs SWA stats across seeds dùng law of total variance.
+
+    Input: {seed: {"val": {metric: {vanilla_mean, vanilla_std, swa_mean, swa_std}},
+                   "test": {...}, "n_swa_avg_mean": ...}}
+    Output: {"val": {metric: {"vanilla": {mean, std_pooled, ...}, "swa": {...}, "delta_mean", "delta_std"}},
+             "test": {...}, "n_swa_avg": ...}
+    """
+    if not seed_vs_data:
+        return None
+    out = {"val": {}, "test": {}}
+    seeds = list(seed_vs_data.keys())
+
+    def _pool(per_seed_means, per_seed_stds):
+        means = np.array(per_seed_means)
+        stds  = np.array(per_seed_stds)
+        within_var  = float((stds ** 2).mean())
+        between_var = float(means.std(ddof=0) ** 2)
+        pooled_std  = float(np.sqrt(within_var + between_var))
+        return {"mean": float(means.mean()), "std_pooled": pooled_std,
+                "per_seed_means": means.tolist(), "per_seed_stds": stds.tolist()}
+
+    for split in ("val", "test"):
+        for metric in ("accuracy", "f1_weighted", "f1"):
+            van_means = [seed_vs_data[s][split][metric]["vanilla_mean"] for s in seeds
+                         if metric in seed_vs_data[s].get(split, {})]
+            van_stds  = [seed_vs_data[s][split][metric]["vanilla_std"]  for s in seeds
+                         if metric in seed_vs_data[s].get(split, {})]
+            swa_means = [seed_vs_data[s][split][metric]["swa_mean"] for s in seeds
+                         if metric in seed_vs_data[s].get(split, {})]
+            swa_stds  = [seed_vs_data[s][split][metric]["swa_std"]  for s in seeds
+                         if metric in seed_vs_data[s].get(split, {})]
+            if not van_means or not swa_means:
+                continue
+            van_agg = _pool(van_means, van_stds)
+            swa_agg = _pool(swa_means, swa_stds)
+            out[split][metric] = {
+                "vanilla": van_agg,
+                "swa": swa_agg,
+                "delta_mean": swa_agg["mean"] - van_agg["mean"],
+                "delta_std":  swa_agg["std_pooled"] - van_agg["std_pooled"],
+            }
+    # SWA snapshot count
+    snap_means = [seed_vs_data[s].get("n_swa_avg_mean") for s in seeds
+                  if seed_vs_data[s].get("n_swa_avg_mean") is not None]
+    if snap_means:
+        out["n_swa_avg_mean"] = float(np.mean(snap_means))
+    return out
 
 
 def aggregate_seeds(seed_results: list[dict], n_folds: int = 5) -> dict:
@@ -323,6 +422,7 @@ def main():
     seed_overfit = {}
     seed_modelft = {}
     seed_class_names = {}
+    seed_vanilla_vs_swa = {}   # SWA enabled runs: vanilla vs SWA per-seed stats
 
     for seed in args.seeds:
         seed_dir = out_root / f"seed_{seed}"
@@ -378,6 +478,7 @@ def main():
         attn = parse_attention_stats(stdout)
         overfit = parse_overfit_indicator(stdout)
         modelft = parse_model_features(stdout)
+        vs_swa = parse_vanilla_vs_swa(stdout)
 
         if cv:
             print(
@@ -405,11 +506,15 @@ def main():
             seed_modelft[seed] = modelft
         if class_names:
             seed_class_names[seed] = class_names
+        if vs_swa:
+            seed_vanilla_vs_swa[seed] = vs_swa
 
     # ── Aggregate ─────────────────────────────────────────────
     # Detect n_folds from per_fold parsing (default 5 if no data)
     detected_n_folds = max((len(f) for f in seed_per_fold.values()), default=5)
     aggregated = aggregate_seeds(list(seed_summaries.values()), n_folds=detected_n_folds)
+    aggregated_vs_swa = aggregate_vanilla_vs_swa(seed_vanilla_vs_swa, n_folds=detected_n_folds)
+    is_swa = aggregated_vs_swa is not None
     f1_macro = aggregated.get("f1", {})
     f1_w = aggregated.get("f1_weighted", {})
     acc = aggregated.get("accuracy", {})
@@ -481,7 +586,34 @@ def main():
         else:
             print(f"| {label} | {s['mean_of_means']:.4f} ± {s['ci95_half']:.4f} "
                   f"| {s['std_pooled']:.4f} | {per_seed_str} |")
+    if is_swa:
+        model_label = "SWA always-pick (v3)"
+    else:
+        model_label = "vanilla (best-ckpt)"
     print()
+    print(f"_Selected model: **{model_label}**._")
+    print()
+
+    # ── Vanilla vs SWA comparison (15-run aggregated) ──
+    if is_swa:
+        snap_mean = aggregated_vs_swa.get("n_swa_avg_mean", 0)
+        print(f"**Vanilla vs SWA — {n_runs}-run aggregated** "
+              f"(SWA averaged {snap_mean:.0f} snapshots/fold):")
+        print()
+        print("| Split | Metric | Vanilla mean ± std | SWA mean ± std | Δ mean | Δ std |")
+        print("|---|---|---|---|---|---|")
+        for split in ("val", "test"):
+            for metric, mlabel in (("accuracy", "Acc"), ("f1_weighted", "F1w"), ("f1", "F1 macro")):
+                d = aggregated_vs_swa.get(split, {}).get(metric)
+                if not d:
+                    continue
+                van = d["vanilla"]; swa = d["swa"]
+                bold = "**" if split == "test" else ""
+                print(f"| {bold}{split}{bold} | {bold}{mlabel}{bold} "
+                      f"| {van['mean']:.4f} ± {van['std_pooled']:.4f} "
+                      f"| {swa['mean']:.4f} ± {swa['std_pooled']:.4f} "
+                      f"| {d['delta_mean']:+.4f} | {d['delta_std']:+.4f} |")
+        print()
 
     # Per-fold breakdown (compact) — SKIP cho fixed-test vì degenerate (1 split = same as per-seed)
     if seed_per_fold and not is_fixed_test:
@@ -571,15 +703,24 @@ def main():
 
     # ── Overfit indicator (Train vs Val vs Test) ───────────────────
     if seed_overfit:
-        print("**Overfit indicator (mean across seeds):**")
+        print("**Overfit indicator (vanilla training trajectory, mean across seeds):**")
         print()
         print("| Metric | Value | Note |")
         print("|---|---|---|")
-        keys = [
-            ("train_f1",    "Train F1 (at best val)", ""),
-            ("best_val_f1", "Best Val F1",             ""),
-            ("test_f1",     "Test F1",                 ""),
-        ]
+        has_swa_overfit = any("test_f1_swa" in seed_overfit[s] for s in seed_overfit)
+        if has_swa_overfit:
+            keys = [
+                ("train_f1",        "Train F1 (at best val)", ""),
+                ("best_val_f1",     "Vanilla Val F1",          ""),
+                ("test_f1_vanilla", "Vanilla Test F1",         ""),
+                ("test_f1_swa",     "SWA Test F1",             "**= reported model**"),
+            ]
+        else:
+            keys = [
+                ("train_f1",    "Train F1 (at best val)", ""),
+                ("best_val_f1", "Best Val F1",             ""),
+                ("test_f1",     "Test F1",                 ""),
+            ]
         for k, label, note in keys:
             vals = [seed_overfit[s][k]["mean"] for s in seed_overfit if k in seed_overfit[s]]
             if vals:
@@ -631,6 +772,7 @@ def main():
         "seeds": args.seeds,
         "timestamp": datetime.now().isoformat(),
         "aggregated": aggregated,
+        "aggregated_vanilla_vs_swa": aggregated_vs_swa,
         "per_seed_cv_summary": {str(k): v for k, v in seed_summaries.items()},
         "per_seed_per_fold_f1": {str(k): v for k, v in seed_per_fold.items()},
         "per_seed_per_cancer_type": {str(k): v for k, v in seed_per_ct.items()},
@@ -638,6 +780,7 @@ def main():
         "per_seed_attention": {str(k): v for k, v in seed_attn.items()},
         "per_seed_overfit": {str(k): v for k, v in seed_overfit.items()},
         "per_seed_model_features": {str(k): v for k, v in seed_modelft.items()},
+        "per_seed_vanilla_vs_swa": {str(k): v for k, v in seed_vanilla_vs_swa.items()},
     }
     summary_path = out_root / "multi_seed_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:

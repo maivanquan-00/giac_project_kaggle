@@ -12,7 +12,9 @@
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); print\\('train.py syntax OK'\\)\")",
       "PowerShell(python -c \"from torch.optim.swa_utils import AveragedModel, SWALR; print\\('SWA imports OK'\\)\")",
       "Bash(ls -la /kaggle/input/datasets/maivanquan/datn-2025-2/data_final 2>/dev/null | head -5 || echo \"Local: not Kaggle env\")",
-      "Read(//kaggle/input/datasets/maivanquan/datn-2025-2/**)"
+      "Read(//kaggle/input/datasets/maivanquan/datn-2025-2/**)",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('run_multi_seed.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK both files'\\)\")"
     ]
   }
 }

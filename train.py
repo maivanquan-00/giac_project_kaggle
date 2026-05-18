@@ -386,11 +386,9 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     val_m_best = eval_epoch(model, val_loader, graph, device)
     val_f1_best = val_m_best["f1"]
 
-    # ── SWA: evaluate, compare, pick winner ──
-    # Selection metric: macro F1 (consistent với current convention).
-    # Nhưng report Δ cho cả Acc + F1w + Macro F1 để theo dõi stability đa-metric.
+    # ── SWA: evaluate (v3 always-pick policy if enabled) ──
     eval_model = model
-    selected = "best_ckpt"
+    selected = "vanilla"
     test_m, test_labels, test_preds = test_m_best, test_labels_best, test_preds_best
     selected_val_f1 = val_f1_best
     val_metrics_vanilla = val_m_best
@@ -407,27 +405,22 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         val_metrics_swa = swa_val_m
         test_metrics_swa = swa_test_m
         n_swa_avg = int(swa_model.n_averaged.item())
-        print(f"\n🪶 SWA evaluation - {fold_name}  (averaged {n_swa_avg} snapshots)")
-        print(f"   {'metric':<14s} {'best_ckpt':>10s} {'swa':>10s} {'Δ':>10s}")
-        for k in ("accuracy", "f1_weighted", "f1"):
-            bv, sv = val_m_best.get(k, 0), swa_val_m.get(k, 0)
-            bt, st = test_m_best.get(k, 0), swa_test_m.get(k, 0)
-            print(f"   val   {k:<8s}  {bv:>10.4f} {sv:>10.4f} {sv-bv:>+10.4f}")
-            print(f"   test  {k:<8s}  {bt:>10.4f} {st:>10.4f} {st-bt:>+10.4f}")
-        if swa_val_m["f1"] >= val_f1_best:
-            eval_model = swa_model
-            selected = "swa"
-            test_m = swa_test_m
-            test_labels = swa_test_labels
-            test_preds = swa_test_preds
-            selected_val_f1 = swa_val_m["f1"]
-            swa_ckpt_path = ckpt_path.replace(".pt", "_swa.pt")
-            torch.save({"model": swa_model.state_dict(), "n_averaged": n_swa_avg}, swa_ckpt_path)
-            print(f"   ✅ Picked SWA (saved → {swa_ckpt_path})")
-        else:
-            print(f"   ⚪ Picked best_ckpt (SWA val macro F1 lower)")
+        # Always-pick SWA: vanilla preserved trong training (OneCycle ko bị động),
+        # SWA averaging giảm fold-to-fold variance trên test. Cả 2 set metrics
+        # đều report để so sánh trong báo cáo.
+        eval_model = swa_model
+        selected = "swa"
+        test_m = swa_test_m
+        test_labels = swa_test_labels
+        test_preds = swa_test_preds
+        selected_val_f1 = swa_val_m["f1"]
+        swa_ckpt_path = ckpt_path.replace(".pt", "_swa.pt")
+        torch.save({"model": swa_model.state_dict(), "n_averaged": n_swa_avg}, swa_ckpt_path)
 
     per_class_f1 = compute_per_class_f1(test_labels, test_preds, cfg["model"]["num_classes"])
+    per_class_f1_vanilla = compute_per_class_f1(
+        test_labels_best, test_preds_best, cfg["model"]["num_classes"]
+    )
 
     # ── Threshold calibration (val-fitted, applied to test) ───────────────
     num_classes = cfg["model"]["num_classes"]
@@ -438,12 +431,24 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     test_m_cal = compute_metrics(test_labels, test_preds_cal.tolist())
     per_class_f1_cal = compute_per_class_f1(test_labels, test_preds_cal.tolist(), num_classes)
 
-    gain = test_m_cal["f1"] - test_m["f1"]
-    print(f"\n📊 Test - {fold_name}  (selected={selected})")
-    print_metrics(test_m,     "Raw  ")
-    print_metrics(test_m_cal, "Cal  ")
-    print(f"✅ Selected val F1: {selected_val_f1:.4f}  |  Calibration gain: {gain:+.4f}")
-    print(f"✅ Test F1  raw={test_m['f1']:.4f}  cal={test_m_cal['f1']:.4f}")
+    # ── Per-fold output: compact, side-by-side khi SWA enabled ──
+    if swa_enabled and swa_model is not None:
+        print(f"\n📊 {fold_name} — Vanilla vs SWA  ({n_swa_avg} snapshots averaged)")
+        print(f"   {'':<6s} {'vanilla':>10s} {'SWA':>10s} {'Δ':>10s}")
+        for split_lbl, vm, sm in (("val ", val_m_best, swa_val_m),
+                                  ("test", test_m_best, swa_test_m)):
+            for k, klabel in (("accuracy", "Acc"), ("f1_weighted", "F1w"), ("f1", "F1m")):
+                v, s = vm.get(k, 0), sm.get(k, 0)
+                print(f"   {split_lbl} {klabel:<3s}: {v:>10.4f} {s:>10.4f} {s-v:>+10.4f}")
+        gain = test_m_cal["f1"] - test_m["f1"]
+        print(f"   → SELECTED: {selected}  |  test cal F1m gain: {gain:+.4f}")
+    else:
+        gain = test_m_cal["f1"] - test_m["f1"]
+        print(f"\n📊 Test - {fold_name}")
+        print_metrics(test_m,     "Raw  ")
+        print_metrics(test_m_cal, "Cal  ")
+        print(f"✅ Best val F1: {selected_val_f1:.4f}  |  Calibration gain: {gain:+.4f}")
+        print(f"✅ Test F1  raw={test_m['f1']:.4f}  cal={test_m_cal['f1']:.4f}")
  
     plot_training_curves(history, path=os.path.join(viz_dir, "training_curves.png"), title=fold_name)
     plot_confusion_matrix_figure(test_labels, test_preds,
@@ -451,20 +456,29 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         title=f"{fold_name} - Test",
         class_names=subtype_names[:cfg["model"]["num_classes"]], normalize=True)
     if cfg["logging"].get("print_classification_report", False):
-        print(f"\n\U0001f4cb Classification Report - {fold_name}")
+        print(f"\n\U0001f4cb Classification Report - {fold_name}  (model={selected})")
         print_classification_report(test_labels, test_preds,
                                     class_names=subtype_names[:cfg["model"]["num_classes"]])
-    print(f"\n🎯 Per-class F1 - {fold_name}  (raw → calibrated)")
-    for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]]):
-        raw = per_class_f1[idx]
-        cal = per_class_f1_cal[idx]
-        print(f"   {idx}:{name:<8s}  {raw:.4f} → {cal:.4f}  ({cal-raw:+.4f})")
+    # Per-class F1: hiển thị vanilla + SWA side-by-side khi SWA enabled
+    if swa_enabled and swa_model is not None:
+        print(f"\n🎯 Per-class F1 - {fold_name}  (vanilla → SWA → cal)")
+        for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]]):
+            v = per_class_f1_vanilla[idx]
+            s = per_class_f1[idx]   # SWA (= selected)
+            c = per_class_f1_cal[idx]
+            print(f"   {idx}:{name:<8s}  van={v:.4f}  swa={s:.4f} ({s-v:+.4f})  cal={c:.4f}")
+    else:
+        print(f"\n🎯 Per-class F1 - {fold_name}  (raw → calibrated)")
+        for idx, name in enumerate(subtype_names[:cfg["model"]["num_classes"]]):
+            raw = per_class_f1[idx]
+            cal = per_class_f1_cal[idx]
+            print(f"   {idx}:{name:<8s}  {raw:.4f} → {cal:.4f}  ({cal-raw:+.4f})")
     save_confusion_matrix_csv(test_labels, test_preds,
         path=os.path.join(viz_dir, "confusion_matrix_test_absolute.csv"),
         class_names=subtype_names[:cfg["model"]["num_classes"]])
- 
+
     attn = collect_attn_stats(eval_model, test_loader, graph, device)
-    print(f"\n\U0001f50d Attention Stats - {fold_name}")
+    print(f"\n\U0001f50d Attention Stats - {fold_name}  (model={selected})")
     print(f"   cpg  : std={attn['cpg_std']:.4f}  max={attn['cpg_max']:.4f}  nnz={attn['cpg_nnz']:.3f}  global_w={attn['modality_w_cpg']:.3f}")
     print(f"   mirna: std={attn['mirna_std']:.4f}  max={attn['mirna_max']:.4f}  nnz={attn['mirna_nnz']:.3f}  global_w={attn['modality_w_mirna']:.3f}")
 
@@ -476,20 +490,32 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         "mirna_gamma": inner_eval.gat.film_mirna_gamma.item(),
         "mirna_beta":  inner_eval.gat.film_mirna_beta.item(),
     }
-    print(f"\n\U0001f3da️  FiLM (final, baseline γ=1 β=0) - {fold_name}")
-    print(f"   cpg  : γ={film['cpg_gamma']:+.4f}  β={film['cpg_beta']:+.4f}")
-    print(f"   mirna: γ={film['mirna_gamma']:+.4f}  β={film['mirna_beta']:+.4f}")
- 
-    # Per-cancer-type F1 breakdown (for multi-cancer datasets like GI)
+    print(f"\U0001f3da️  FiLM (γ=1 β=0 baseline)  cpg γ={film['cpg_gamma']:+.4f} β={film['cpg_beta']:+.4f}  ·  mirna γ={film['mirna_gamma']:+.4f} β={film['mirna_beta']:+.4f}")
+
+    # Per-cancer-type F1 (multi-cancer datasets như GI). Khi SWA enabled, in cả
+    # vanilla + SWA side-by-side để so sánh trong báo cáo.
     per_ct_f1 = {}
+    per_ct_f1_vanilla = {}
     test_cancer_types = getattr(datasets["test"], "cancer_types", None)
     if test_cancer_types is not None and len(set(test_cancer_types)) > 0:
         per_ct_f1 = compute_per_cancer_type_f1(test_labels, test_preds, test_cancer_types)
+        if swa_enabled and swa_model is not None:
+            per_ct_f1_vanilla = compute_per_cancer_type_f1(
+                test_labels_best, test_preds_best, test_cancer_types
+            )
         if len(per_ct_f1) > 1:
-            print(f"\n\U0001f9ec Per-cancer-type F1 - {fold_name}")
-            print(f"   {'Cancer':>8}  {'N':>5}  {'F1':>6}")
-            for ct, info in sorted(per_ct_f1.items()):
-                print(f"   {ct:>8}  {info['n']:>5}  {info['f1']:.4f}")
+            if swa_enabled and swa_model is not None:
+                print(f"\n\U0001f9ec Per-cancer-type F1 - {fold_name}  (vanilla → SWA)")
+                print(f"   {'Cancer':>8}  {'N':>5}  {'vanilla':>8}  {'SWA':>8}  {'Δ':>+8}")
+                for ct, info in sorted(per_ct_f1.items()):
+                    v = per_ct_f1_vanilla.get(ct, {}).get("f1", 0)
+                    s = info["f1"]
+                    print(f"   {ct:>8}  {info['n']:>5}  {v:>8.4f}  {s:>8.4f}  {s-v:>+8.4f}")
+            else:
+                print(f"\n\U0001f9ec Per-cancer-type F1 - {fold_name}")
+                print(f"   {'Cancer':>8}  {'N':>5}  {'F1':>6}")
+                for ct, info in sorted(per_ct_f1.items()):
+                    print(f"   {ct:>8}  {info['n']:>5}  {info['f1']:.4f}")
 
     # Train F1 at the epoch of best val F1 — overfit indicator
     train_f1_at_best = None
@@ -501,7 +527,10 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
             "test_metrics_calibrated": test_m_cal, "per_class_f1_calibrated": per_class_f1_cal,
             "threshold_offsets": offsets.tolist(),
             "checkpoint": ckpt_path, "viz_dir": viz_dir, "per_ct_f1": per_ct_f1,
-            "per_class_f1": per_class_f1, "attn": attn, "film": film,
+            "per_ct_f1_vanilla": per_ct_f1_vanilla,
+            "per_class_f1": per_class_f1,
+            "per_class_f1_vanilla": per_class_f1_vanilla,
+            "attn": attn, "film": film,
             "best_val_loss": best_loss, "stop_epoch": epoch,
             "n_params": n_params, "dims": dims,
             "train_f1_at_best_val": train_f1_at_best,
@@ -515,16 +544,19 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
  
  
 def summarize_cv(results):
-    print("\n\U0001f4c8 5-fold CV summary")
+    swa_results = [r for r in results if r.get("swa_enabled")]
+    is_swa = len(swa_results) > 0
+    selected_label = "SWA (always-pick v3)" if is_swa else "vanilla (best-ckpt)"
+
+    # ── 1. Headline: 5-fold CV summary of selected model ──
+    print(f"\n\U0001f4c8 5-fold CV summary — model = {selected_label}")
     metric_names = ["accuracy", "precision", "recall", "f1", "f1_weighted"]
     for name in metric_names:
-        vals = [r["test_metrics"].get(name) for r in results]
-        vals = [v for v in vals if v is not None]
-        if not vals:
+        vals = np.array([r["test_metrics"].get(name) for r in results
+                         if r["test_metrics"].get(name) is not None])
+        if not vals.size:
             continue
-        vals = np.array(vals)
-        label = name.upper().replace("F1_WEIGHTED", "F1_WEIGHTED")
-        # Show calibrated F1 alongside raw
+        label = name.upper()
         if name == "f1":
             cal_vals = np.array([r.get("test_metrics_calibrated", {}).get("f1", 0) for r in results])
             gain = cal_vals.mean() - vals.mean()
@@ -533,34 +565,87 @@ def summarize_cv(results):
         else:
             print(f"  {label:11s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
 
-    # Per-cancer-type summary across folds
+    # ── 2. Vanilla vs SWA comparison (chỉ khi SWA enabled) ──
+    if is_swa:
+        n_avg = np.array([r["n_swa_avg"] for r in swa_results])
+        print(f"\n\U0001fab6 Vanilla vs SWA — 5-fold mean ± std  "
+              f"({n_avg.mean():.1f} snapshots/fold avg, range=[{int(n_avg.min())},{int(n_avg.max())}])")
+        print(f"  {'split':<5s} {'metric':<4s}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>+8s}  {'Δ std':>+8s}")
+        for split, key_van, key_swa in [
+            ("val ",  "val_metrics_vanilla",  "val_metrics_swa"),
+            ("test",  "test_metrics_vanilla", "test_metrics_swa"),
+        ]:
+            for metric, mlabel in (("accuracy", "Acc"), ("f1_weighted", "F1w"), ("f1", "F1m")):
+                van = np.array([r[key_van].get(metric, 0) for r in swa_results])
+                sw  = np.array([r[key_swa].get(metric, 0) for r in swa_results
+                                if r.get(key_swa) is not None])
+                if not sw.size:
+                    continue
+                d_mean = sw.mean() - van.mean()
+                d_std  = sw.std(ddof=0) - van.std(ddof=0)
+                print(f"  {split} {mlabel:<3s}   "
+                      f"{van.mean():.4f} ± {van.std(ddof=0):.4f}  "
+                      f"{sw.mean():.4f} ± {sw.std(ddof=0):.4f}  "
+                      f"{d_mean:+.4f}  {d_std:+.4f}")
+
+    # ── 3. Per-cancer-type F1 ──
     all_per_ct = [r.get("per_ct_f1", {}) for r in results]
     unique_cts = sorted(set().union(*[d.keys() for d in all_per_ct]))
     if len(unique_cts) > 1:
-        print(f"\n\U0001f9ec Per-cancer-type F1 (5-fold mean ± std):")
-        print(f"  {'Cancer':>8}  {'N/fold':>6}  {'F1 mean':>8}  {'F1 std':>7}")
-        for ct in unique_cts:
-            f1_vals = np.array([d[ct]["f1"] for d in all_per_ct if ct in d])
-            n_vals  = np.array([d[ct]["n"]  for d in all_per_ct if ct in d])
-            print(f"  {ct:>8}  {n_vals.mean():>6.1f}  {f1_vals.mean():>8.4f}  {f1_vals.std(ddof=0):>7.4f}")
+        if is_swa:
+            all_per_ct_van = [r.get("per_ct_f1_vanilla", {}) for r in results]
+            print(f"\n\U0001f9ec Per-cancer-type F1 (5-fold mean ± std) — vanilla vs SWA:")
+            print(f"  {'Cancer':>8}  {'N/fold':>6}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>+8s}")
+            for ct in unique_cts:
+                van_vals = np.array([d[ct]["f1"] for d in all_per_ct_van if ct in d])
+                sw_vals  = np.array([d[ct]["f1"] for d in all_per_ct     if ct in d])
+                n_vals   = np.array([d[ct]["n"]  for d in all_per_ct     if ct in d])
+                if not (van_vals.size and sw_vals.size):
+                    continue
+                d_mean = sw_vals.mean() - van_vals.mean()
+                print(f"  {ct:>8}  {n_vals.mean():>6.1f}  "
+                      f"{van_vals.mean():.4f} ± {van_vals.std(ddof=0):.4f}  "
+                      f"{sw_vals.mean():.4f} ± {sw_vals.std(ddof=0):.4f}  "
+                      f"{d_mean:+.4f}")
+        else:
+            print(f"\n\U0001f9ec Per-cancer-type F1 (5-fold mean ± std):")
+            print(f"  {'Cancer':>8}  {'N/fold':>6}  {'F1 mean':>8}  {'F1 std':>7}")
+            for ct in unique_cts:
+                f1_vals = np.array([d[ct]["f1"] for d in all_per_ct if ct in d])
+                n_vals  = np.array([d[ct]["n"]  for d in all_per_ct if ct in d])
+                print(f"  {ct:>8}  {n_vals.mean():>6.1f}  {f1_vals.mean():>8.4f}  {f1_vals.std(ddof=0):>7.4f}")
 
+    # ── 4. Per-class F1 ──
     num_classes = max((max(r.get("per_class_f1", {0: 0}).keys()) for r in results), default=-1) + 1
     if num_classes > 0:
-        print(f"\n🎯 Per-class F1 (5-fold mean ± std):")
-        print(f"  {'Class':>12}  {'F1 mean':>8}  {'F1 std':>7}")
-        for class_idx in range(num_classes):
-            vals = np.array([
-                r["per_class_f1"][class_idx]
-                for r in results
-                if class_idx in r.get("per_class_f1", {})
-            ])
-            if vals.size:
-                print(f"  {class_idx:>12}  {vals.mean():>8.4f}  {vals.std(ddof=0):>7.4f}")
+        if is_swa:
+            print(f"\n🎯 Per-class F1 (5-fold mean ± std) — vanilla vs SWA:")
+            print(f"  {'Class':>5}  {'vanilla':>16s}  {'SWA':>16s}  {'Δ mean':>+8s}")
+            for class_idx in range(num_classes):
+                van = np.array([r["per_class_f1_vanilla"].get(class_idx, 0) for r in results
+                                if r.get("per_class_f1_vanilla")])
+                sw  = np.array([r["per_class_f1"].get(class_idx, 0) for r in results
+                                if class_idx in r.get("per_class_f1", {})])
+                if not sw.size:
+                    continue
+                d_mean = sw.mean() - van.mean() if van.size else 0
+                print(f"  {class_idx:>5}  "
+                      f"{van.mean():.4f} ± {van.std(ddof=0):.4f}  "
+                      f"{sw.mean():.4f} ± {sw.std(ddof=0):.4f}  "
+                      f"{d_mean:+.4f}")
+        else:
+            print(f"\n🎯 Per-class F1 (5-fold mean ± std):")
+            print(f"  {'Class':>12}  {'F1 mean':>8}  {'F1 std':>7}")
+            for class_idx in range(num_classes):
+                vals = np.array([r["per_class_f1"][class_idx] for r in results
+                                 if class_idx in r.get("per_class_f1", {})])
+                if vals.size:
+                    print(f"  {class_idx:>12}  {vals.mean():>8.4f}  {vals.std(ddof=0):>7.4f}")
 
-    # ── Attention stats summary (5-fold mean ± std) ─────────────────
+    # ── 5. Attention stats (from selected model) ──
     attn_list = [r.get("attn", {}) for r in results if r.get("attn")]
     if attn_list:
-        print(f"\n🔍 Attention Stats (5-fold mean ± std):")
+        print(f"\n🔍 Attention Stats (5-fold mean ± std)  [from {selected_label}]:")
         attn_keys = [
             "cpg_std", "cpg_max", "cpg_nnz", "modality_w_cpg",
             "mirna_std", "mirna_max", "mirna_nnz", "modality_w_mirna",
@@ -570,17 +655,17 @@ def summarize_cv(results):
             if vals.size:
                 print(f"  {k:18s}: mean={vals.mean():.4f}  std={vals.std(ddof=0):.4f}")
 
-    # ── FiLM γ, β summary (Phase 2.1a + 3.1; baseline init γ=1, β=0) ──
+    # ── 6. FiLM γ, β (from selected model) ──
     film_list = [r.get("film", {}) for r in results if r.get("film")]
     if film_list:
-        print(f"\n\U0001f3da️  FiLM γ, β (5-fold mean ± std, baseline γ=1 β=0):")
+        print(f"\n\U0001f3da️  FiLM γ, β (5-fold mean ± std, baseline γ=1 β=0)  [from {selected_label}]:")
         for k in ["cpg_gamma", "cpg_beta", "mirna_gamma", "mirna_beta"]:
             vals = np.array([f[k] for f in film_list if k in f])
             if vals.size:
                 drift = vals.mean() - (1.0 if k.endswith("gamma") else 0.0)
                 print(f"  {k:14s}: mean={vals.mean():+.4f}  std={vals.std(ddof=0):.4f}  drift={drift:+.4f}")
 
-    # ── Model size & feature counts (5-fold mean) ───────────────────
+    # ── 7. Model size & feature counts ──
     n_params_list = [r.get("n_params") for r in results if r.get("n_params")]
     dims_list = [r.get("dims") for r in results if r.get("dims")]
     if n_params_list and dims_list:
@@ -590,50 +675,27 @@ def summarize_cv(results):
         print(f"  Meth feats   : {int(np.mean([d['meth'] for d in dims_list])):,}")
         print(f"  miRNA feats  : {int(np.mean([d['mirna'] for d in dims_list])):,}")
 
-    # ── Overfit indicator: Train vs Val vs Test ────────────────────
-    train_f1s = [r.get("train_f1_at_best_val") for r in results if r.get("train_f1_at_best_val") is not None]
-    best_val_f1s = [r.get("best_val_f1") for r in results if r.get("best_val_f1") is not None]
-    test_f1s = [r["test_metrics"].get("f1") for r in results if r.get("test_metrics")]
-    stop_epochs = [r.get("stop_epoch") for r in results if r.get("stop_epoch") is not None]
-    if train_f1s and best_val_f1s and test_f1s:
-        tf = np.array(train_f1s); bv = np.array(best_val_f1s); te = np.array(test_f1s)
-        print(f"\n⚖️  Overfit indicator (5-fold):")
+    # ── 8. Overfit indicator (vanilla training trajectory — luôn dùng vanilla
+    #    để gap interpretation nhất quán, kể cả khi SWA picked) ──
+    train_f1s    = [r.get("train_f1_at_best_val") for r in results if r.get("train_f1_at_best_val") is not None]
+    test_f1_van  = [r["test_metrics_vanilla"]["f1"] for r in results if r.get("test_metrics_vanilla")]
+    val_f1_van   = [r["val_metrics_vanilla"]["f1"]  for r in results if r.get("val_metrics_vanilla")]
+    test_f1_swa  = [r["test_metrics_swa"]["f1"]     for r in results if r.get("test_metrics_swa")]
+    stop_epochs  = [r.get("stop_epoch") for r in results if r.get("stop_epoch") is not None]
+    if train_f1s and val_f1_van and test_f1_van:
+        tf = np.array(train_f1s); vv = np.array(val_f1_van); tev = np.array(test_f1_van)
+        print(f"\n⚖️  Overfit indicator (vanilla training trajectory, 5-fold):")
         print(f"  Train F1 (at best val) : mean={tf.mean():.4f}  std={tf.std(ddof=0):.4f}")
-        print(f"  Best  Val F1           : mean={bv.mean():.4f}  std={bv.std(ddof=0):.4f}")
-        print(f"  Test  F1               : mean={te.mean():.4f}  std={te.std(ddof=0):.4f}")
-        print(f"  Train−Val gap          : mean={(tf-bv).mean():+.4f}  (gap > 0.20 → strong overfit)")
-        print(f"  Val−Test gap           : mean={(bv-te).mean():+.4f}  (gap > 0.05 → val không đại diện)")
+        print(f"  Vanilla Val F1         : mean={vv.mean():.4f}  std={vv.std(ddof=0):.4f}")
+        print(f"  Vanilla Test F1        : mean={tev.mean():.4f}  std={tev.std(ddof=0):.4f}")
+        if test_f1_swa:
+            tes = np.array(test_f1_swa)
+            print(f"  SWA Test F1            : mean={tes.mean():.4f}  std={tes.std(ddof=0):.4f}  Δ vs vanilla = {tes.mean()-tev.mean():+.4f}")
+        print(f"  Train−Val gap          : mean={(tf-vv).mean():+.4f}  (gap > 0.20 → strong overfit)")
+        print(f"  Val−Test gap (vanilla) : mean={(vv-tev).mean():+.4f}  (gap > 0.05 → val không đại diện)")
         if stop_epochs:
             se = np.array(stop_epochs)
             print(f"  Stop epoch             : mean={se.mean():.1f}  range=[{se.min()},{se.max()}]")
-
-    # ── SWA summary (when SWA enabled) ──────────────────────────────
-    # Report mean ± std cho vanilla vs SWA trên cả Acc, F1w, Macro F1 — vì user
-    # báo cáo Acc + F1w (paper convention), không chỉ macro F1.
-    swa_results = [r for r in results if r.get("swa_enabled")]
-    if swa_results:
-        n_picked = sum(1 for r in swa_results if r.get("selected") == "swa")
-        n_avg = np.array([r["n_swa_avg"] for r in swa_results])
-        print(f"\n\U0001fab6 SWA summary (5-fold):")
-        print(f"  Picked SWA: {n_picked}/{len(swa_results)} folds  ·  "
-              f"snapshots/fold mean={n_avg.mean():.1f}  range=[{int(n_avg.min())},{int(n_avg.max())}]")
-        print(f"  {'split':<6s} {'metric':<14s} {'vanilla mean ± std':>22s} {'SWA mean ± std':>22s} {'Δ mean':>10s} {'Δ std':>10s}")
-        for split, key_vanilla, key_swa in [
-            ("val",  "val_metrics_vanilla",  "val_metrics_swa"),
-            ("test", "test_metrics_vanilla", "test_metrics_swa"),
-        ]:
-            for metric in ("accuracy", "f1_weighted", "f1"):
-                van = np.array([r[key_vanilla].get(metric, 0) for r in swa_results])
-                swa = np.array([r[key_swa].get(metric, 0) for r in swa_results
-                                if r.get(key_swa) is not None])
-                if not swa.size:
-                    continue
-                d_mean = swa.mean() - van.mean()
-                d_std  = swa.std(ddof=0) - van.std(ddof=0)
-                print(f"  {split:<6s} {metric:<14s}  "
-                      f"{van.mean():.4f} ± {van.std(ddof=0):.4f}    "
-                      f"{swa.mean():.4f} ± {swa.std(ddof=0):.4f}  "
-                      f"{d_mean:+.4f}  {d_std:+.4f}")
 
 
 def main():
