@@ -53,13 +53,15 @@ def parse_args():
 def parse_cv_summary(stdout: str) -> dict | None:
     """Extract test metrics block từ train.py stdout.
 
-    Hai format:
-    1. CV mode: '📈 5-fold CV summary' với mean ± std
-    2. Fixed-test mode (ESCA scenario): single '[Raw  ] Acc=... F1=...' line
+    3 formats được support:
+    1. CV mode: '📈 5-fold CV summary' với mean ± std (UPPERCASE labels)
+    2. Fixed-test SWA-enabled (new): '📊 Fixed-test ESCA — Vanilla vs SWA' với
+       'test Acc/F1w/F1m: V S Δ' rows → dùng cột SWA
+    3. Fixed-test legacy: single '[Raw  ] Acc=... F1=...' line
 
-    Returns {metric_name: {"mean": x, "std": y}} for both.
+    Returns {metric_name: {"mean": x, "std": y}} for tất cả.
     """
-    # Try CV format first
+    # Format 1: CV mode "5-fold CV summary"
     pattern = re.compile(
         r"^\s+([A-Z_0-9]+)\s*:\s*mean=([\d.]+)\s+std=([\d.]+)",
         re.MULTILINE,
@@ -68,7 +70,27 @@ def parse_cv_summary(stdout: str) -> dict | None:
     if matches:
         return {name.lower(): {"mean": float(m), "std": float(s)} for name, m, s in matches}
 
-    # Fallback: fixed-test (1 split) — parse '[Raw  ] Acc=X P=X R=X F1=X F1w=X'
+    # Format 2: Fixed-test SWA-enabled Vanilla-vs-SWA per-fold block.
+    # Row format: '   test Acc:     0.8481     0.9241    +0.0759'
+    # Use SWA column (3rd numeric).
+    marker = "— Vanilla vs SWA"
+    pos = stdout.rfind(marker)
+    if pos >= 0:
+        section = stdout[pos:pos + 1500]
+        out = {}
+        for raw_name, key in [("Acc", "accuracy"),
+                              ("F1w", "f1_weighted"),
+                              ("F1m", "f1")]:
+            m = re.search(
+                rf"^\s+test\s+{re.escape(raw_name)}:\s+[\d.]+\s+([\d.]+)\s+[+\-][\d.]+",
+                section, re.MULTILINE,
+            )
+            if m:
+                out[key] = {"mean": float(m.group(1)), "std": 0.0}
+        if out:
+            return out
+
+    # Format 3: Fixed-test legacy '[Raw  ] Acc=X P=X R=X F1=X F1w=X'
     m = re.search(
         r"\[Raw\s*\]\s+Acc=([\d.]+)\s+P=([\d.]+)\s+R=([\d.]+)\s+F1=([\d.]+)\s+F1w=([\d.]+)",
         stdout,
@@ -85,7 +107,20 @@ def parse_cv_summary(stdout: str) -> dict | None:
 
 
 def parse_per_fold_f1(stdout: str) -> list[float]:
-    """Extract per-fold test F1 (macro RAW) — line dạng: '✅ Test F1  raw=0.7006  cal=0.6973'."""
+    """Extract per-fold test F1 macro của SELECTED model.
+
+    2 formats:
+    - SWA-enabled (new): '   test F1m:     0.7193     0.7376    +0.0183' → SWA col
+    - SWA-disabled (old): '✅ Test F1  raw=0.7006  cal=0.6973' → raw value
+    """
+    # New format: dùng SWA column (giá trị thứ 2)
+    new_matches = re.findall(
+        r"^\s+test\s+F1m:\s+[\d.]+\s+([\d.]+)\s+[+\-][\d.]+",
+        stdout, re.MULTILINE,
+    )
+    if new_matches:
+        return [float(v) for v in new_matches]
+    # Fallback: old format
     return [float(v) for v in re.findall(r"✅ Test F1\s+raw=([\d.]+)", stdout)]
 
 
