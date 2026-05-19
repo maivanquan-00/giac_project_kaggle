@@ -62,8 +62,12 @@ training:
   weight_decay:          5.0e-3
   node_emb_weight_decay: 1.5e-2
   focal_gamma:     2.0
-  use_manual_focal_alpha: false   # auto-compute (HM-SNV dropped, không cần boost)
-  focal_alpha:     [1.0, 1.0, 1.0, 1.0]
+  # Manual focal_alpha boost GS — GS F1 0.66 là bottleneck kéo macro xuống.
+  # Auto-computed (use_manual=false): CIN≈0.25, GS≈1.13, MSI≈0.77, EBV≈1.85
+  # Manual boost: GS từ ~1.13 → 4.0 (~3.5x) để push GS F1 lên 0.78+ giảm gap MOFNet.
+  # Sau remap (HM-SNV dropped): idx 0=CIN, 1=GS, 2=MSI, 3=EBV
+  use_manual_focal_alpha: true
+  focal_alpha:     [0.5, 4.0, 1.0, 2.0]
   label_smoothing: 0.05
   balanced_sampler: false
   lambda_frobenius: 0.002
