@@ -8,8 +8,13 @@ data:
   cancer_types: ["STAD"]   # chỉ STAD — vừa filter samples, vừa chọn emQTL file
 
 preprocessing:
-  gene_top_k:   2000      # 380 samples → ~260 train/fold. 3500 quá cao (ratio 13:1). 2000 = ratio 7.7:1
-  meth_top_k:   2000      # same reasoning
+  # Tuning 2026-05-24: tăng feature pool 2000→3500 để match GI combined.
+  # Lý do: STAD-only 5-class GIAC tied F1m với MoXGATE rerun (0.637 vs 0.636)
+  # nhưng kém Acc/F1w (~-0.04). Hypothesis: feature pool nhỏ → under-context cho
+  # cross-attention. Tăng features cho model có nhiều "candidates" hơn.
+  # Risk: feature/sample ratio 9:1 (n=380), có thể overfit nhẹ. Validate seed 42 trước.
+  gene_top_k:   3500      # was 2000
+  meth_top_k:   3500      # was 2000
   mirna_top_k:  null      # null = dùng tất cả miRNA sau low-expression filter (~593)
   feature_selection_method: "anova"
   val_size:  0.15
