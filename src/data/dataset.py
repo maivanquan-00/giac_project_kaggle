@@ -23,7 +23,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 from sklearn.feature_selection import f_classif
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit, train_test_split
 import torch
 from torch.utils.data import Dataset
 
@@ -123,7 +123,16 @@ def build_fixed_cohort_test_datasets(cfg: dict, seed: int = 42):
 
 
 def build_cv_datasets(cfg: dict, seed: int = 42, n_splits: int | None = None):
-    """Build stratified CV folds. Each fold still keeps an inner validation split."""
+    """Build stratified CV folds. Each fold still keeps an inner validation split.
+
+    Two protocols supported:
+      - StratifiedKFold (default): non-overlapping test sets, each ~20% of data.
+        Standard 5-fold CV with 80/20 train+val/test ratio per fold.
+      - StratifiedShuffleSplit: 5 random splits, each with custom test_size
+        (e.g., 0.3 to match MoBRCA-net 70/30 protocol). Test sets may overlap
+        across folds. Triggered when `preprocessing.test_size` is specified
+        AND > 0.2 (or `preprocessing.split_mode == 'shuffle_split'`).
+    """
     raw = load_aligned_data(cfg)
     split_cfg = _get_preprocess_cfg(cfg)
     n_splits = n_splits or split_cfg["cv_folds"]
@@ -136,7 +145,22 @@ def build_cv_datasets(cfg: dict, seed: int = 42, n_splits: int | None = None):
         context="outer CV",
     )
 
-    splitter = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    # Choose splitter based on config
+    test_size = split_cfg.get("test_size")
+    split_mode = split_cfg.get("split_mode", "kfold")
+    use_shuffle_split = (split_mode == "shuffle_split") or (
+        test_size is not None and float(test_size) > 0.2
+    )
+
+    if use_shuffle_split:
+        ts = float(test_size) if test_size is not None else 0.3
+        print(f"  📐 Using StratifiedShuffleSplit (n_splits={n_splits}, test_size={ts}) "
+              f"— {int((1-ts)*100)}/{int(ts*100)} protocol per fold")
+        splitter = StratifiedShuffleSplit(
+            n_splits=n_splits, test_size=ts, random_state=seed
+        )
+    else:
+        splitter = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     folds = []
 
     for fold_idx, (idx_trainval, idx_test) in enumerate(

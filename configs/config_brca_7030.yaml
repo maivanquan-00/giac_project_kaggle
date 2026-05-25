@@ -1,13 +1,17 @@
-# BRCA 70/30 — Match MoBRCA-net evaluation protocol (single train/test split)
+# BRCA 70/30 + 5-fold Repeated — Match MoBRCA-net protocol với statistical rigor
 #
-# MoBRCA-net dùng 70/30 single split (no CV). 70/30 thường give higher mean
-# than 5-fold CV (~+0.02-0.04 Acc) vì:
-#   - Test set 30% (larger than 20% CV) → less variance per run
-#   - Train set 70% (larger than ~68% effective in 5-fold)
-#   - Single split = no cross-fold averaging
+# MoBRCA-net dùng 70/30 single split (no CV). GIAC adapts to 70/30 + repeated:
+#   - StratifiedShuffleSplit n_splits=5, test_size=0.3
+#   - Mỗi seed: 5 random 70/30 splits → 5 folds per seed
+#   - 3 seeds × 5 folds = 15 RUNS total (cùng rigor như 5-fold CV)
+#   - Protocol per fold: 70/30 (match MoBRCA-net) — NOT 80/20 như StratifiedKFold
 #
-# Fair MoBRCA-net comparison: cùng protocol 70/30 + 3 seeds (statistical rigor).
-# Architecture giữ BASELINE (config_brca.yaml) — không tune knob.
+# Why repeated 70/30 thay vì single 70/30:
+#   - Single split: 1 lucky/unlucky split → cao variance, ko reliable
+#   - Repeated 5 splits per seed × 3 seeds = 15 runs → statistical rigor
+#   - Match MoBRCA-net protocol mỗi run + thêm cross-fold averaging
+#
+# Architecture giữ BASELINE — không tune knob (fair comparison).
 #
 # Usage:
 #   python run_multi_seed.py --config configs/config_brca_7030.yaml \\
@@ -25,10 +29,11 @@ preprocessing:
   meth_top_k:   3500
   mirna_top_k:  null
   feature_selection_method: "anova"
-  # 70/30 protocol (match MoBRCA-net)
-  test_size:  0.30
-  val_size:   0.15        # 15% of train+val portion (≈ 10% of total)
-  cv_folds:   1            # Single split, no CV (triggers build_datasets path)
+  # 70/30 protocol (match MoBRCA-net) + 5 repeated splits per seed
+  test_size:  0.30         # 30% test, match MoBRCA-net
+  val_size:   0.15         # 15% of remaining train+val
+  cv_folds:   5            # 5 splits → triggers build_cv_datasets path
+  split_mode: "shuffle_split"   # use StratifiedShuffleSplit (70/30 per fold)
   minority_boost_gene:  200
   minority_boost_meth:  150
   minority_boost_mirna: 0
