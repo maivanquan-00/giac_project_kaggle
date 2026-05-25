@@ -1,0 +1,105 @@
+# BRCA v2 — Vanilla-improvement experiment (target close gap với MoBRCA-net)
+# Baseline (config_brca.yaml) vanilla: Acc 0.870, F1w 0.870, F1m 0.815
+# MoBRCA-net target (estimate): Acc ~0.92-0.94
+# Gap ~0.05-0.07 — significant
+#
+# Quan sát baseline: Train F1 ≈ Val F1 ≈ 0.87 → under-fit / capacity-limited
+# (Train-Val gap ≈ -0.002 in baseline)
+# → Có room tăng capacity mà KHÔNG sợ overfit (khác với STAD)
+#
+# Historical warning: hidden_dim=128 caused overfit (gap 0.03→0.07) trong thử nghiệm cũ
+# → Stage 1 conservative: KEEP hidden 96, chỉ tune feature pool + dropout
+# (Nếu Stage 1 không đủ, Stage 2 sẽ revisit hidden 128 với regularization tăng)
+
+data:
+  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_brca"
+  graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
+  emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/BRCA_extend"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
+  cancer_types: ["BRCA"]
+
+preprocessing:
+  # v2: features 3500 → 4500 — BRCA n=965 đủ data, ratio 12:1 OK
+  # Hypothesis: under-fit nguyên do feature pool hơi nhỏ → tăng để model exploit nhiều patterns
+  gene_top_k:   4500
+  meth_top_k:   4500
+  mirna_top_k:  null
+  feature_selection_method: "anova"
+  val_size:  0.15
+  cv_folds:  5
+  minority_boost_gene:  300       # was 200, scale theo features
+  minority_boost_meth:  200       # was 150
+  minority_boost_mirna: 0
+  minority_classes: [1, 2, 4]    # Her2=1, LumA=2, Normal=4
+
+graph:
+  emqtl_pval_threshold:    0.05
+  max_edges_per_node:      20
+  max_coregulation_edges:  10
+  ppi_score_threshold:     700
+  use_ppi:          true
+  use_reactome:     true
+  use_mirna:        true
+  use_mirna_family: true
+  reactome_max_pathway_size: 50
+  max_targets_per_mirna:    100
+  use_cpg_island:      true
+  cpg_island_relation: "Island"
+
+model:
+  # v2 KEEP hidden_dim=96 (historical warning: 128 caused overfit)
+  # Test capacity boost qua features tăng trước, hidden sau (Stage 2)
+  hidden_dim:  96
+  gat_heads:   4
+  gat_layers:  2
+  gat_dropout: 0.3
+  topk_seq:    32
+  ca_heads:    4
+  ca_dropout:  0.4
+  sparsemax_alpha: 1.5
+  num_classes: 5
+  # v2: classifier_dropout 0.55 → 0.45
+  # Lý do: baseline under-fit (Train ≈ Val) → quá dropout cao có thể giới hạn capacity
+  classifier_dropout: 0.45
+  final_dim:   32
+
+training:
+  epochs:      150
+  batch_size:  32
+  learning_rate:     1.0e-4
+  max_learning_rate: 5.0e-4
+  scheduler: "onecycle"
+  onecycle_pct_start:        0.1
+  onecycle_div_factor:       10.0
+  onecycle_final_div_factor: 100.0
+  # v2: weight_decay 3e-3 → 2e-3 — giảm nhẹ since under-fit
+  weight_decay:          2.0e-3
+  node_emb_weight_decay: 1.5e-2
+  focal_gamma:     2.0
+  focal_alpha:     [1.0, 3.0, 1.0, 2.0, 3.0]   # overridden by auto-compute
+  label_smoothing: 0.05
+  balanced_sampler: false
+  lambda_frobenius: 0.001
+  patience: 20
+  model_selection_metric: "val_f1"
+  seed: 42
+  loss_name: "focal"
+  subtype_names: ["Basal", "Her2", "LumA", "LumB", "Normal"]
+  minority_augmentation:
+    enabled: true
+    class: [1, 4]
+    noise_std: 0.10
+  # SWA enabled để có cả vanilla + SWA numbers trong output.
+  # User report VANILLA cho fair comparison với MoBRCA-net.
+  swa:
+    enabled: true
+    start_epoch: 30
+    update_freq: 1
+
+logging:
+  save_dir:     "/kaggle/working/checkpoints_brca_v2/"
+  log_interval: 5
+  print_classification_report: true
+
+interpretability:
+  top_k_features: 50
