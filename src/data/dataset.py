@@ -60,8 +60,12 @@ def build_datasets(cfg: dict, seed: int = 42):
         seed=seed,
         val_size=split_cfg["val_size"],
         stratify_by_cancer_type=split_cfg.get("stratify_by_cancer_type", True),
+        test_size=split_cfg.get("test_size", 0.2),
     )
-    print(f"\n📊 Split: train={len(idx_train)}, val={len(idx_val)}, test={len(idx_test)}")
+    total = len(idx_train) + len(idx_val) + len(idx_test)
+    pct_test = 100 * len(idx_test) / total
+    print(f"\n📊 Split: train={len(idx_train)}, val={len(idx_val)}, test={len(idx_test)}  "
+          f"(test={pct_test:.0f}% — protocol={'70/30' if pct_test > 25 else '80/20'})")
 
     return _package_split(raw, idx_train, idx_val, idx_test, split_cfg)
 
@@ -323,7 +327,14 @@ def _make_single_split(
     seed: int,
     val_size: float,
     stratify_by_cancer_type: bool,
+    test_size: float = 0.2,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Single train/val/test split.
+
+    test_size: fraction for held-out test (default 0.2 for 80/20).
+               Set 0.3 for MoBRCA-net-style 70/30 protocol.
+    val_size:  fraction of train+val used for inner validation.
+    """
     idx = np.arange(len(labels))
     outer_stratify = _make_stratify_targets(
         labels=labels,
@@ -333,7 +344,7 @@ def _make_single_split(
         context="single split test",
     )
     idx_trainval, idx_test = train_test_split(
-        idx, test_size=0.2, random_state=seed, stratify=outer_stratify
+        idx, test_size=test_size, random_state=seed, stratify=outer_stratify
     )
     inner_stratify = _make_stratify_targets(
         labels=labels[idx_trainval],
