@@ -39,7 +39,13 @@
       "Bash(cp \"d:/ĐATN/giac_project_kaggle/moBRCA-net.pdf\" \"/tmp/moBRCA_real.pdf\")",
       "Bash(pdftotext -layout /tmp/moBRCA_real.pdf /tmp/moBRCA_real.txt)",
       "PowerShell(python -m py_compile train.py run_multi_seed.py src/utils.py)",
-      "PowerShell(if \\($?\\) { \"OK: compiled\" })"
+      "PowerShell(if \\($?\\) { \"OK: compiled\" })",
+      "PowerShell(python -m py_compile train.py src/model_v2.py src/models/gat_encoder_v2.py)",
+      "PowerShell(if \\($?\\) { \"compiled OK\" })",
+      "PowerShell(python -c \"import torch, torch_geometric, entmax; print\\('torch', torch.__version__, '| PyG', torch_geometric.__version__\\)\")",
+      "PowerShell($envs = @\\(\\); Get-Command python,python3,py -ErrorAction SilentlyContinue | ForEach-Object { $_.Source }; \"\"; \"--- conda envs ---\"; conda env list 2>$null)",
+      "PowerShell(foreach \\($e in @\\('dl','mogn','base'\\)\\) { $p = \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\$e\\\\python.exe\"; if \\($e -eq 'base'\\) { $p = \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\python.exe\" }; $r = & $p -c \"import torch,torch_geometric,entmax;print\\('OK',torch.__version__\\)\" 2>&1; \"$e : $r\" })",
+      "PowerShell(& \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\dl\\\\python.exe\" \"d:\\\\DATN\\\\giac_project_kaggle\\\\_tmp_v2_algebra_test.py\")"
     ]
   }
 }

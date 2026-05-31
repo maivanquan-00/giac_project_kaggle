@@ -35,6 +35,15 @@ from src.utils import (
 _DEFAULT_subtype_names = ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
 
 
+def build_model(dims, cfg_model, cfg_train):
+    """Chọn kiến trúc theo cfg_model['arch'] ('v1' mặc định | 'v2' patient-conditioned)."""
+    arch = str(cfg_model.get("arch", "v1")).lower()
+    if arch == "v2":
+        from src.model_v2 import GIACModelV2
+        return GIACModelV2(dims, cfg_model, cfg_train)
+    return GIACModel(dims, cfg_model, cfg_train)
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/config.yaml")
@@ -202,7 +211,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     edge_stats = get_edge_stats(graph)
-    model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
+    model = build_model(dims, cfg["model"], cfg["training"]).to(device)
 
     # Class weight strategy (focal alpha):
     #   - use_class_weights=false → neutral (all ones)
@@ -344,12 +353,15 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"  Attention mirna: std={attn['mirna_std']:.4f} max={attn['mirna_max']:.4f} "
           f"nnz={attn['mirna_nnz']:.3f} w={attn['modality_w_mirna']:.3f}")
 
-    film = {
-        "cpg_gamma":   model.gat.film_cpg_gamma.item(),
-        "cpg_beta":    model.gat.film_cpg_beta.item(),
-        "mirna_gamma": model.gat.film_mirna_gamma.item(),
-        "mirna_beta":  model.gat.film_mirna_beta.item(),
-    }
+    if hasattr(model.gat, "film_summary"):
+        film = model.gat.film_summary()           # v2: per-channel FiLM → scalar mean
+    else:
+        film = {
+            "cpg_gamma":   model.gat.film_cpg_gamma.item(),
+            "cpg_beta":    model.gat.film_cpg_beta.item(),
+            "mirna_gamma": model.gat.film_mirna_gamma.item(),
+            "mirna_beta":  model.gat.film_mirna_beta.item(),
+        }
     print(f"  FiLM cpg γ={film['cpg_gamma']:+.4f} β={film['cpg_beta']:+.4f}  ·  "
           f"mirna γ={film['mirna_gamma']:+.4f} β={film['mirna_beta']:+.4f}")
 
