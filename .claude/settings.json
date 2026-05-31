@@ -23,7 +23,23 @@
       "PowerShell(python -c \"import yaml; [print\\(f, '->', yaml.safe_load\\(open\\(f, encoding='utf-8'\\)\\)['data'].get\\('exclude_subtypes'\\), '|', yaml.safe_load\\(open\\(f, encoding='utf-8'\\)\\)['model']['num_classes'], '|', yaml.safe_load\\(open\\(f, encoding='utf-8'\\)\\)['training']['subtype_names']\\) for f in ['configs/config_4class.yaml', 'configs/config_gi_stad_only_4class.yaml', 'configs/config_brca_4class.yaml']]\")",
       "PowerShell(python -c \"import yaml; cfg = yaml.safe_load\\(open\\('configs/config_gi_stad_only_4class.yaml', encoding='utf-8'\\)\\); print\\('use_manual:', cfg['training']['use_manual_focal_alpha']\\); print\\('focal_alpha:', cfg['training']['focal_alpha']\\); print\\('num_classes:', cfg['model']['num_classes']\\)\")",
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('scripts/visualize_full_graph.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
-      "PowerShell(python -c \"import ast; ast.parse\\(open\\('src/data/dataset.py', encoding='utf-8'\\).read\\(\\)\\); print\\('dataset.py syntax OK'\\)\")"
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('src/data/dataset.py', encoding='utf-8'\\).read\\(\\)\\); print\\('dataset.py syntax OK'\\)\")",
+      "Bash(pdftotext -v)",
+      "Bash(pdftotext -layout \"d:/ĐATN/giac_project_kaggle/GCOA-Net.pdf\" \"d:/ĐATN/giac_project_kaggle/GCOA-Net.txt\")",
+      "Bash(cp \"d:/ĐATN/giac_project_kaggle/GCOA-Net.pdf\" \"/tmp/GCOA-Net.pdf\")",
+      "Bash(pdftotext -layout \"/tmp/GCOA-Net.pdf\" \"/tmp/GCOA-Net.txt\")",
+      "Bash(cp \"d:/ĐATN/giac_project_kaggle/moBRCA-net.pdf\" \"/tmp/moBRCA.pdf\")",
+      "Bash(pdftotext -layout /tmp/moBRCA.pdf /tmp/moBRCA.txt)",
+      "Bash(cp \"d:/ĐATN/giac_project_kaggle/2025 - MoXGATE- Modality-Aware Cross-Attention for Multi-Omic Gastrointestinal Cancer Subtype Classification.pdf\" \"/tmp/moxgate.pdf\")",
+      "Bash(pdftotext -layout /tmp/moxgate.pdf /tmp/moxgate.txt)",
+      "Bash(cp \"d:/ĐATN/giac_project_kaggle/2025 - MOFNet- a deep learning framework for multiomics data fusion in cancer subtype classification.pdf\" \"/tmp/mofnet.pdf\")",
+      "Bash(pdftotext -layout /tmp/mofnet.pdf /tmp/mofnet.txt)",
+      "Bash(cp \"d:/ĐATN/giac_project_kaggle/GCOA-Net.pdf\" \"/tmp/gcoa.pdf\")",
+      "Bash(pdftotext -layout /tmp/gcoa.pdf /tmp/gcoa.txt)",
+      "Bash(cp \"d:/ĐATN/giac_project_kaggle/moBRCA-net.pdf\" \"/tmp/moBRCA_real.pdf\")",
+      "Bash(pdftotext -layout /tmp/moBRCA_real.pdf /tmp/moBRCA_real.txt)",
+      "PowerShell(python -m py_compile train.py run_multi_seed.py src/utils.py)",
+      "PowerShell(if \\($?\\) { \"OK: compiled\" })"
     ]
   }
 }

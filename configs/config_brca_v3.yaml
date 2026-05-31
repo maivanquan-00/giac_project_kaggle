@@ -95,10 +95,6 @@ training:
     enabled: true
     class: [1, 2, 4]               # cả Her2, LumA, Normal
     noise_std: 0.15                # was 0.10
-  swa:
-    enabled: true
-    start_epoch: 40                # was 30 — start later cho 200 epochs
-    update_freq: 1
 
 logging:
   save_dir:     "/kaggle/working/checkpoints_brca_v3/"

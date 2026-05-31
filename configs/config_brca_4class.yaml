@@ -76,10 +76,6 @@ training:
     enabled: true
     class: [1]   # Her2=1 (only minority after dropping Normal)
     noise_std: 0.10
-  swa:
-    enabled: true
-    start_epoch: 30
-    update_freq: 1
 
 logging:
   save_dir:     "/kaggle/working/checkpoints_brca_4class/"

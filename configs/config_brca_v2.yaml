@@ -89,12 +89,6 @@ training:
     enabled: true
     class: [1, 4]
     noise_std: 0.10
-  # SWA enabled để có cả vanilla + SWA numbers trong output.
-  # User report VANILLA cho fair comparison với MoBRCA-net.
-  swa:
-    enabled: true
-    start_epoch: 30
-    update_freq: 1
 
 logging:
   save_dir:     "/kaggle/working/checkpoints_brca_v2/"

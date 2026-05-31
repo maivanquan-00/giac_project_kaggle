@@ -77,10 +77,6 @@ training:
     enabled: true
     class: [1, 3]   # GS=1, EBV=3 (after remap)
     noise_std: 0.10
-  swa:
-    enabled: true
-    start_epoch: 30
-    update_freq: 1
 
 logging:
   save_dir:     "/kaggle/working/checkpoints_4class/"

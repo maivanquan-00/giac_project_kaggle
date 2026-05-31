@@ -69,14 +69,6 @@ training:
     enabled: true
     class: 3           # POLE=3 — minority chính của UCEC (~7%)
     noise_std: 0.10
-  # SWA v3 — keep OneCycle running, NO SWALR, always-pick. Vanilla preserved.
-  # Đã validate trên GI: Acc/F1w std giảm 22-25%, vanilla baseline preserved.
-  # UCEC bottleneck: POLE n=48, current F1 ~0.552 (baseline). Kỳ vọng SWA giảm
-  # std từ 0.058 → ~0.04-0.045.
-  swa:
-    enabled: true
-    start_epoch: 30
-    update_freq: 1
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"

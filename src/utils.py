@@ -246,64 +246,8 @@ def load_checkpoint(model, optimizer, path, device):
     ckpt = torch.load(path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
     optimizer.load_state_dict(ckpt["optimizer"])
-    print(f"  ✅ Loaded checkpoint từ epoch {ckpt['epoch']}: {ckpt['metrics']}")
+    print(f"  Loaded checkpoint từ epoch {ckpt['epoch']}: {ckpt['metrics']}")
     return ckpt["epoch"], ckpt["metrics"]
-
-
-def find_optimal_thresholds(
-    probs: np.ndarray,
-    labels: np.ndarray,
-    num_classes: int,
-    n_rounds: int = 3,
-    resolution: float = 0.02,
-    min_class_samples: int = 5,
-    max_offset: float = 0.10,
-) -> np.ndarray:
-    """Tìm per-class probability offsets tối ưu hoá macro F1 trên val set.
-
-    Coordinate descent: mỗi vòng duyệt qua từng class, grid search offset_c.
-    Prediction rule: argmax(probs[:, c] - offsets[c])
-      offset_c < 0 → class c được predict nhiều hơn (dùng cho minority)
-      offset_c > 0 → class c được predict ít hơn (dùng cho majority)
-
-    Args:
-        min_class_samples: class có ít hơn N mẫu trong val → bỏ qua (offset=0)
-                           tránh overfit offset vào val set quá nhỏ.
-        max_offset: giới hạn tìm kiếm ±max_offset (mặc định 0.10, không phải 0.30)
-
-    Returns: offsets shape (num_classes,)
-    """
-    val_counts = np.bincount(labels, minlength=num_classes)
-    calibrate_mask = val_counts >= min_class_samples  # chỉ calibrate class đủ mẫu
-
-    offsets = np.zeros(num_classes, dtype=np.float64)
-    grid = np.arange(-max_offset, max_offset + resolution / 2, resolution)
-    for _ in range(n_rounds):
-        improved = False
-        for c in range(num_classes):
-            if not calibrate_mask[c]:
-                continue  # quá ít mẫu → giữ offset=0
-            baseline = _f1_with_offsets(probs, labels, offsets)
-            best_off, best_f1 = offsets[c], baseline
-            for tau in grid:
-                trial = offsets.copy()
-                trial[c] = tau
-                score = _f1_with_offsets(probs, labels, trial)
-                if score > best_f1:
-                    best_f1, best_off, improved = score, tau, True
-            offsets[c] = best_off
-        if not improved:
-            break
-    return offsets
-
-
-def _f1_with_offsets(probs: np.ndarray, labels: np.ndarray, offsets: np.ndarray) -> float:
-    return f1_score(labels, apply_threshold_offsets(probs, offsets), average="macro", zero_division=0)
-
-
-def apply_threshold_offsets(probs: np.ndarray, offsets: np.ndarray) -> np.ndarray:
-    """Predict argmax(probs - offsets). offsets[c] < 0 → class c ưu tiên hơn."""
-    return (probs - offsets[np.newaxis, :]).argmax(axis=1)
 
 
 class EarlyStopping:

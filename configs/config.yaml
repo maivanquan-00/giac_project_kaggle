@@ -76,20 +76,6 @@ training:
     enabled: true
     class: [1, 3, 4]   # Stage 2B: thêm EBV=4 (GS=1, HM-SNV=3, EBV=4)
     noise_std: 0.10
-  # Stochastic Weight Averaging — v3 pure: keep OneCycle running, chỉ collect
-  # averages on top (KHÔNG dùng SWALR). Vanilla model 100% preserved.
-  # Model dùng LayerNorm only → không cần update_bn.
-  #
-  # Tuning history:
-  # - v1 (start=40, swa_lr=5e-5, paused OneCycle): SWA ≈ vanilla, ko hiệu quả.
-  # - v2 (start=30, swa_lr=1e-4, paused OneCycle): SWA test cải thiện rõ (Δstd
-  #   -0.022 F1, Δstd -0.0094 Acc) NHƯNG vanilla bị disturb (val-test gap +0.12)
-  #   → vanilla mean drop 0.71→0.65; pick logic chọn vanilla noisy → final giảm.
-  # - v3 (start=30, no SWALR): main scheduler không bị động → vanilla preserved.
-  swa:
-    enabled: true
-    start_epoch: 30       # epoch bắt đầu collect (OneCycle decay đến epoch 150)
-    update_freq: 1        # update_parameters mỗi N epoch
 
 logging:
   save_dir:     "/kaggle/working/checkpoints/"
