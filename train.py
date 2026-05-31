@@ -226,16 +226,31 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     emb_wd    = cfg["training"].get("node_emb_weight_decay", base_wd * 5)
     base_lr   = cfg["training"]["learning_rate"]
     node_emb_ids = {id(p) for p in model.gat.node_emb.parameters()}
-    optimizer = torch.optim.AdamW([
-        {"params": [p for p in model.parameters() if id(p) not in node_emb_ids], "lr": base_lr, "weight_decay": base_wd},
+    # v2: patient-injection params (value_scale/value_gamma) → KHÔNG weight decay,
+    # tránh dìm tín hiệu bệnh nhân về 0. Rỗng với v1.
+    inject_ids = set()
+    if hasattr(model.gat, "value_scale"):
+        inject_ids = {id(p) for p in list(model.gat.value_scale.parameters())
+                      + list(model.gat.value_gamma.parameters())}
+    param_groups = [
+        {"params": [p for p in model.parameters()
+                    if id(p) not in node_emb_ids and id(p) not in inject_ids],
+         "lr": base_lr, "weight_decay": base_wd},
         {"params": list(model.gat.node_emb.parameters()), "lr": base_lr, "weight_decay": emb_wd},
-    ])
+    ]
+    if inject_ids:
+        param_groups.append(
+            {"params": list(model.gat.value_scale.parameters())
+             + list(model.gat.value_gamma.parameters()),
+             "lr": base_lr, "weight_decay": 0.0}
+        )
+    optimizer = torch.optim.AdamW(param_groups)
 
     sched_name = cfg["training"].get("scheduler", "onecycle").lower()
     max_lr = cfg["training"].get("max_learning_rate", base_lr * 5)
     if sched_name == "onecycle":
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer, max_lr=[max_lr, max_lr],
+            optimizer, max_lr=[max_lr] * len(param_groups),
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=max(len(train_loader), 1),
             pct_start=cfg["training"].get("onecycle_pct_start", 0.1),

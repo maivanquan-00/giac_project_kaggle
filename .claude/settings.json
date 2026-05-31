@@ -47,7 +47,9 @@
       "PowerShell(foreach \\($e in @\\('dl','mogn','base'\\)\\) { $p = \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\$e\\\\python.exe\"; if \\($e -eq 'base'\\) { $p = \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\python.exe\" }; $r = & $p -c \"import torch,torch_geometric,entmax;print\\('OK',torch.__version__\\)\" 2>&1; \"$e : $r\" })",
       "PowerShell(& \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\dl\\\\python.exe\" \"d:\\\\DATN\\\\giac_project_kaggle\\\\_tmp_v2_algebra_test.py\")",
       "PowerShell(python -m py_compile src/models/gat_encoder_v2.py src/model_v2.py train.py)",
-      "PowerShell(& \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\dl\\\\python.exe\" \"d:\\\\DATN\\\\giac_project_kaggle\\\\_tmp_chunk_test.py\")"
+      "PowerShell(& \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\dl\\\\python.exe\" \"d:\\\\DATN\\\\giac_project_kaggle\\\\_tmp_chunk_test.py\")",
+      "PowerShell(python -m py_compile train.py src/models/gat_encoder_v2.py)",
+      "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_v2_fast.yaml',encoding='utf-8'\\)\\); print\\('arch',c['model']['arch'],'| gat_chunk',c['model']['gat_chunk'],'| gene_top_k',c['preprocessing']['gene_top_k'],'| max_targets_per_mirna',c['graph']['max_targets_per_mirna'],'| ppi_thr',c['graph']['ppi_score_threshold']\\)\")"
     ]
   }
 }

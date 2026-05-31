@@ -1,0 +1,91 @@
+# GIAC v2 FAST — đồ thị gọn để per-patient GAT chạy nhanh hơn nhiều.
+# Giống config_v2.yaml nhưng CẮT số cạnh/node (~242k → kỳ vọng ~80-100k edges).
+# Mục tiêu: giảm thời gian/fold (v2 đầy đủ ~1h/fold quá lâu).
+#
+# Cắt theo phân tích log: miRTarBase 41% + emQTL 22% + PPI 14% + Reactome 13%.
+# So sánh khoa học: đây là đồ thị THƯA HƠN → nếu kết quả tốt thì tuyệt; nếu tệ đi
+# nhiều so với config_v2.yaml thì biết gap do mất cạnh, cân nhắc nới lại từng phần.
+
+data:
+  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
+  graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
+  cancer_types: ["COAD", "ESCA", "READ", "STAD"]
+
+preprocessing:
+  gene_top_k:   2000      # 3500 → 2000 (ít node hơn ⇒ ít cạnh emQTL/PPI/Reactome)
+  meth_top_k:   2000      # 3500 → 2000
+  mirna_top_k:  null
+  feature_selection_method: "anova"
+  val_size:  0.15
+  cv_folds:  5
+  minority_boost_gene:  300
+  minority_boost_meth:  200
+  minority_boost_mirna: 0
+  minority_classes: [1, 3, 4]
+  stratify_by_cancer_type: true
+
+graph:
+  emqtl_pval_threshold:    0.05
+  max_edges_per_node:      15      # 20 → 15 (cap emQTL & Reactome chặt hơn)
+  max_coregulation_edges:  10
+  ppi_score_threshold:     900     # 700 → 900 (chỉ PPI confidence cao ⇒ ít cạnh PPI)
+  use_ppi:          true
+  use_reactome:     true
+  use_mirna:        true
+  use_mirna_family: true
+  reactome_max_pathway_size: 30    # 50 → 30 (pathway nhỏ ⇒ ít cạnh copathway)
+  max_targets_per_mirna:    20     # 100 → 20 (CẮT MẠNH NHẤT — miRTarBase chiếm 41%)
+  use_cpg_island:      true
+  cpg_island_relation: "Island+Shore"
+
+model:
+  arch: v2
+  gat_chunk:   8                   # đồ thị gọn hơn ⇒ fit nhiều bệnh nhân/lần hơn; giảm 4/2 nếu OOM
+  hidden_dim:  96
+  gat_heads:   4
+  gat_layers:  2                   # giảm 1 để nhanh gấp đôi nếu vẫn chậm (đánh đổi capacity)
+  gat_dropout: 0.3
+  topk_seq:    32
+  ca_heads:    4
+  ca_dropout:  0.4
+  sparsemax_alpha: 1.5
+  num_classes: 5
+  classifier_dropout: 0.5
+  final_dim:   32
+
+training:
+  epochs:      150
+  batch_size:  32
+  learning_rate:     1.0e-4
+  max_learning_rate: 5.0e-4
+  scheduler: "onecycle"
+  onecycle_pct_start:        0.1
+  onecycle_div_factor:       10.0
+  onecycle_final_div_factor: 100.0
+  weight_decay:          5.0e-3
+  node_emb_weight_decay: 1.5e-2
+  focal_gamma:     2.0
+  use_manual_focal_alpha: true
+  focal_alpha:     [0.077, 0.44, 0.35, 5.0, 1.63]
+  label_smoothing: 0.05
+  balanced_sampler: false
+  lambda_frobenius: 0.002
+  patience: 15
+  min_epochs: 40
+  model_selection_metric: "val_f1"
+  seed: 42
+  loss_name: "focal"
+  subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
+  minority_augmentation:
+    enabled: true
+    class: [1, 3, 4]
+    noise_std: 0.10
+
+logging:
+  save_dir:     "/kaggle/working/checkpoints_v2_fast/"
+  log_interval: 5
+  print_classification_report: true
+
+interpretability:
+  top_k_features: 50

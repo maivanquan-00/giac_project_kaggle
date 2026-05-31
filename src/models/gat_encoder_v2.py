@@ -85,12 +85,16 @@ class MultiOmicGATModuleV2(nn.Module):
         for p in self.node_emb.values():
             nn.init.xavier_uniform_(p)
 
-        # ── Patient value injection (per-channel FiLM), init 0 → x = node_emb ──
+        # ── Patient value injection (per-channel FiLM) ──
+        # value_scale (additive) init 0; value_gamma (multiplicative gate) init 0.5
+        # → x = E·(1 + 0.5·value) ngay từ đầu: tín hiệu bệnh nhân CÓ tiếng nói từ
+        # epoch 0 (model chỉ cần học GIẢM nếu hại, dễ hơn tăng từ 0). 2 param này
+        # được loại khỏi weight_decay trong train.py để không bị dìm về 0.
         self.value_scale = nn.ParameterDict({
             t: nn.Parameter(torch.zeros(hidden_dim)) for t in _NODE_TYPES
         })
         self.value_gamma = nn.ParameterDict({
-            t: nn.Parameter(torch.zeros(hidden_dim)) for t in _NODE_TYPES
+            t: nn.Parameter(torch.full((hidden_dim,), 0.5)) for t in _NODE_TYPES
         })
 
         self.convs = nn.ModuleList(
