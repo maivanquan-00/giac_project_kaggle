@@ -114,6 +114,7 @@ class GIACModelV2(nn.Module):
             n_layers   = cfg_model["gat_layers"],
             dropout    = cfg_model.get("gat_dropout", 0.3),
             topk_seq   = topk,
+            gat_chunk  = cfg_model.get("gat_chunk", 4),
         )
         self.cross_attn = ModalityCrossAttentionV2(
             hidden_dim = H,

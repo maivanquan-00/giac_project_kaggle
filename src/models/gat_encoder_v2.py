@@ -24,6 +24,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 from torch_geometric.data import HeteroData
 from torch_geometric.nn import GATv2Conv, HeteroConv
 
@@ -62,12 +63,17 @@ def _make_hetero_conv(hidden_dim: int, n_heads: int, dropout: float) -> HeteroCo
 
 class MultiOmicGATModuleV2(nn.Module):
     def __init__(self, dims: dict, hidden_dim: int, n_heads: int,
-                 n_layers: int, dropout: float, topk_seq: int = 32):
+                 n_layers: int, dropout: float, topk_seq: int = 32,
+                 gat_chunk: int = 4):
         super().__init__()
         assert hidden_dim % n_heads == 0
         self.n_layers   = n_layers
         self.hidden_dim = hidden_dim
         self.topk_seq   = topk_seq
+        # Số bệnh nhân xử lý GAT mỗi lần. GAT per-patient nhân toàn bộ đồ thị B lần →
+        # OOM nếu batch toàn bộ. Chunk nhỏ + gradient checkpointing giới hạn peak
+        # memory ≈ gat_chunk × đồ-thị, đổi lại chậm hơn (~1.5-2×). Tăng nếu còn VRAM.
+        self.gat_chunk  = max(1, int(gat_chunk))
 
         self.n_nodes = {"gene": dims["gene"], "cpg": dims["meth"], "mirna": dims["mirna"]}
 
@@ -148,29 +154,49 @@ class MultiOmicGATModuleV2(nn.Module):
         self._edge_cache[cache_key] = batched
         return batched
 
-    def forward(self, batch: dict, graph: HeteroData):
-        device = batch["gene"].device
-        B = batch["gene"].shape[0]
-
-        # 1) node features cá thể hoá rồi flatten (B*n_t, H) cho batched GAT
-        h_dict = {}
-        for t in _NODE_TYPES:
-            x = self._inject(t, batch[_BATCH_KEY[t]])         # (B, n_t, H)
-            h_dict[t] = x.reshape(B * self.n_nodes[t], self.hidden_dim)
-
-        present = {k: v for k, v in graph.edge_index_dict.items() if v.shape[1] > 0}
-        batched_edges = self._batched_edges(present, B, device, id(graph))
-
-        # 2) GAT message passing (per-patient nhờ batched graph)
+    def _encode_chunk(self, vg, vc, vm, present, graph_id):
+        """Inject + GAT cho một chunk bệnh nhân. Trả emb (bc, n_t, H) mỗi node type."""
+        bc = vg.shape[0]
+        device = vg.device
+        vals = {"gene": vg, "cpg": vc, "mirna": vm}
+        h_dict = {
+            t: self._inject(t, vals[t]).reshape(bc * self.n_nodes[t], self.hidden_dim)
+            for t in _NODE_TYPES
+        }
+        batched_edges = self._batched_edges(present, bc, device, graph_id)
         for i in range(self.n_layers):
             out = self.convs[i](h_dict, batched_edges)
             h_dict = {
                 t: self.layer_norms[i][t](h + F.elu(self.dropout(out.get(t, h))))
                 for t, h in h_dict.items()
             }
+        return tuple(h_dict[t].view(bc, self.n_nodes[t], self.hidden_dim) for t in _NODE_TYPES)
 
-        # 3) reshape về (B, n_t, H) — embedding giờ đã cá thể hoá theo bệnh nhân
-        emb = {t: h_dict[t].view(B, self.n_nodes[t], self.hidden_dim) for t in _NODE_TYPES}
+    def forward(self, batch: dict, graph: HeteroData):
+        B = batch["gene"].shape[0]
+        present = {k: v for k, v in graph.edge_index_dict.items() if v.shape[1] > 0}
+        gid = id(graph)
+
+        # 1-3) Xử lý GAT theo chunk bệnh nhân (giới hạn peak memory). Trong training
+        #       dùng gradient checkpointing: giải phóng activation chunk sau forward,
+        #       tính lại khi backward → peak ≈ gat_chunk × đồ-thị thay vì B × đồ-thị.
+        parts = {t: [] for t in _NODE_TYPES}
+        for s in range(0, B, self.gat_chunk):
+            vg = batch["gene"][s:s + self.gat_chunk]
+            vc = batch["meth"][s:s + self.gat_chunk]
+            vm = batch["mirna"][s:s + self.gat_chunk]
+            if self.training and self.gat_chunk < B:
+                eg, ec, em = checkpoint(
+                    lambda a, b, c: self._encode_chunk(a, b, c, present, gid),
+                    vg, vc, vm, use_reentrant=False,
+                )
+            else:
+                eg, ec, em = self._encode_chunk(vg, vc, vm, present, gid)
+            parts["gene"].append(eg)
+            parts["cpg"].append(ec)
+            parts["mirna"].append(em)
+
+        emb = {t: torch.cat(parts[t], dim=0) for t in _NODE_TYPES}  # (B, n_t, H), cá thể hoá
 
         # ── Gene query: value-weighted pooling toàn bộ gene (giống tinh thần v1) ──
         z_gene = self.gene_norm(

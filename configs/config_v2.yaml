@@ -2,7 +2,8 @@
 # Giống config.yaml (GI 5-class) nhưng dùng kiến trúc v2 (model.arch: v2).
 # Chạy A/B: so với config.yaml (v1) trên cùng seeds.
 #
-# ⚠️ v2 chạy GAT per-patient (~B× chi phí GAT). Nếu OOM trên T4: giảm batch_size → 16.
+# ⚠️ v2 chạy GAT per-patient → nặng VRAM. Lever chống OOM là `model.gat_chunk`
+#    (số bệnh nhân/lần qua GAT), KHÔNG phải batch_size. Mặc định 4; giảm 2 nếu vẫn OOM.
 
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
@@ -39,6 +40,7 @@ graph:
 
 model:
   arch: v2                       # <<< dùng GIACModelV2 (patient-conditioned GAT + per-patient fusion)
+  gat_chunk:   4                  # số bệnh nhân/lần qua GAT (giới hạn VRAM). Giảm→2 nếu vẫn OOM, tăng→8 nếu còn dư
   hidden_dim:  96                # Phase 4d sweet spot (96 better than 64 or 128)
   gat_heads:   4                 # Phase 4d/5b confirmed: 4 heads optimal (5b 8 heads = tie)
   gat_layers:  2
@@ -53,7 +55,7 @@ model:
 
 training:
   epochs:      150
-  batch_size:  32                 # giảm → 16 nếu OOM (v2 GAT chạy per-patient)
+  batch_size:  32                 # OK giữ 32 — VRAM do model.gat_chunk kiểm soát, không phải batch_size
   learning_rate:     1.0e-4
   max_learning_rate: 5.0e-4
   scheduler: "onecycle"
