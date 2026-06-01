@@ -49,7 +49,8 @@
       "PowerShell(python -m py_compile src/models/gat_encoder_v2.py src/model_v2.py train.py)",
       "PowerShell(& \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\dl\\\\python.exe\" \"d:\\\\DATN\\\\giac_project_kaggle\\\\_tmp_chunk_test.py\")",
       "PowerShell(python -m py_compile train.py src/models/gat_encoder_v2.py)",
-      "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_v2_fast.yaml',encoding='utf-8'\\)\\); print\\('arch',c['model']['arch'],'| gat_chunk',c['model']['gat_chunk'],'| gene_top_k',c['preprocessing']['gene_top_k'],'| max_targets_per_mirna',c['graph']['max_targets_per_mirna'],'| ppi_thr',c['graph']['ppi_score_threshold']\\)\")"
+      "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_v2_fast.yaml',encoding='utf-8'\\)\\); print\\('arch',c['model']['arch'],'| gat_chunk',c['model']['gat_chunk'],'| gene_top_k',c['preprocessing']['gene_top_k'],'| max_targets_per_mirna',c['graph']['max_targets_per_mirna'],'| ppi_thr',c['graph']['ppi_score_threshold']\\)\")",
+      "PowerShell(python -m py_compile src/data/graph_builder.py)"
     ]
   }
 }

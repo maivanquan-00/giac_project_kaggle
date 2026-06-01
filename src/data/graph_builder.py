@@ -210,9 +210,16 @@ def _load_emqtl_edges(
     pval_thresh: float,
     max_edges: int,
 ) -> torch.Tensor | None:
-    """Load CpG → Gene edges from TCGA emQTL files. Returns None when no edges."""
+    """Load CpG → Gene edges from TCGA emQTL files. Returns None when no edges.
+
+    Dedup (c_i, g_i): cùng 1 cặp CpG-Gene có thể xuất hiện ở nhiều file ung thư
+    (COAD/ESCA/READ/STAD). KHÔNG dedup → cạnh trùng → GAT đếm neighbor 2 lần
+    (lệch attention) + cap max_edges bị bản lặp chiếm chỗ. Connectivity là nhị
+    phân (nối/không), không cần bội số cạnh.
+    """
     src_list, dst_list = [], []
     cpg_edge_count = {}
+    seen = set()
 
     for ct in cancer_types:
         fpath = os.path.join(giac_dir, f"TCGA_emQTL_{ct}.txt")
@@ -242,10 +249,15 @@ def _load_emqtl_edges(
                 if c_name not in cpg_idx or g_name not in gene_idx:
                     continue
                 c_i = cpg_idx[c_name]
-                if cpg_edge_count.get(c_i, 0) >= max_edges:
+                g_i = gene_idx[g_name]
+                key = (c_i, g_i)
+                if key in seen:                       # bỏ cặp trùng (qua nhiều file ung thư)
                     continue
+                if max_edges is not None and cpg_edge_count.get(c_i, 0) >= max_edges:
+                    continue                           # max_edges=None → không giới hạn degree
+                seen.add(key)
                 src_list.append(c_i)
-                dst_list.append(gene_idx[g_name])
+                dst_list.append(g_i)
                 cpg_edge_count[c_i] = cpg_edge_count.get(c_i, 0) + 1
 
     if not src_list:
@@ -368,8 +380,8 @@ def _load_mirna_edges(
  
         g_i = gene_idx[g_raw]
         for m_i in base_to_indices[m_base]:
-            if mirna_target_count.get(m_i, 0) >= max_targets_per_mirna:
-                continue
+            if max_targets_per_mirna is not None and mirna_target_count.get(m_i, 0) >= max_targets_per_mirna:
+                continue                               # None → không giới hạn số target/miRNA
             key = (m_i, g_i)
             if key in seen:
                 continue
@@ -432,10 +444,10 @@ def _build_coregulation_edges(
         if not mirna_set:
             continue
         for c_i in cpg_set:
-            if cpg_edge_count.get(c_i, 0) >= max_edges_per_node:
-                continue
+            if max_edges_per_node is not None and cpg_edge_count.get(c_i, 0) >= max_edges_per_node:
+                continue                               # None → không giới hạn degree
             for m_i in mirna_set:
-                if mirna_edge_count.get(m_i, 0) >= max_edges_per_node:
+                if max_edges_per_node is not None and mirna_edge_count.get(m_i, 0) >= max_edges_per_node:
                     continue
                 key = (c_i, m_i)
                 if key in seen:
@@ -515,14 +527,14 @@ def _load_reactome_edges(reactome_file, hgnc_file, gene_idx, max_pathway_size=50
     edge_count = {}
  
     for pid, gset in pathway_to_genes.items():
-        if len(gset) > max_pathway_size:
-            continue
+        if max_pathway_size is not None and len(gset) > max_pathway_size:
+            continue                                   # None → giữ mọi pathway (cẩn thận clique lớn)
         glist = [gene_idx[g] for g in gset if g in gene_idx]
         for a in range(len(glist)):
             for b in range(a + 1, len(glist)):
                 i1, i2 = glist[a], glist[b]
-                if edge_count.get(i1, 0) >= max_edges or edge_count.get(i2, 0) >= max_edges:
-                    continue
+                if max_edges is not None and (edge_count.get(i1, 0) >= max_edges or edge_count.get(i2, 0) >= max_edges):
+                    continue                           # None → không giới hạn degree gene
                 key = (min(i1, i2), max(i1, i2))
                 if key in seen:
                     continue
@@ -632,9 +644,9 @@ def _load_cpg_island_edges(
         for a in range(len(unique)):
             for b in range(a + 1, len(unique)):
                 i1, i2 = unique[a], unique[b]
-                if edge_count.get(i1, 0) >= max_edges_per_node:
-                    continue
-                if edge_count.get(i2, 0) >= max_edges_per_node:
+                if max_edges_per_node is not None and edge_count.get(i1, 0) >= max_edges_per_node:
+                    continue                           # None → không giới hạn degree
+                if max_edges_per_node is not None and edge_count.get(i2, 0) >= max_edges_per_node:
                     continue
                 key = (min(i1, i2), max(i1, i2))
                 if key in seen:
