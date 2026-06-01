@@ -42,22 +42,32 @@ RELATION_ORDER = [
 
 
 def _print_relation_summary(graph) -> None:
-    """Numbered table of all 13 declared relations with edge counts."""
+    """Numbered table of all 13 declared relations with edge counts + max node degree.
+
+    Cột `max deg` = degree lớn nhất của 1 node trong quan hệ đó (max của in/out).
+    Dùng để phát hiện "hub nổ degree" khi bỏ cap — degree càng to → đồ thị càng nặng
+    và càng dễ over-smoothing trong GAT.
+    """
     print("\n📋 Graph relations (13 declared):")
     total = 0
     n_active = 0
+    max_deg_global = 0
     for i, (et, arrow, desc) in enumerate(RELATION_ORDER, start=1):
         src, rel, dst = et
         ei = graph[et].edge_index if et in graph.edge_index_dict else None
         n_edges = int(ei.shape[1]) if ei is not None else 0
+        deg = 0
+        if ei is not None and n_edges > 0:
+            deg = max(int(torch.bincount(ei[0]).max()), int(torch.bincount(ei[1]).max()))
+            max_deg_global = max(max_deg_global, deg)
         marker = "✓" if n_edges > 0 else "✗"
         rel_str = f"{src:5s} {arrow}{rel:15s}{arrow} {dst:5s}"
-        print(f"   [{i:2d}] {marker} {rel_str}  ({desc:20s}) : {n_edges:>8,} edges")
+        print(f"   [{i:2d}] {marker} {rel_str}  ({desc:20s}) : {n_edges:>8,} edges  (max deg {deg:>5,})")
         total += n_edges
         if n_edges > 0:
             n_active += 1
     print(f"   {'─' * 74}")
-    print(f"   Total: {n_active}/13 active, {total:,} edges")
+    print(f"   Total: {n_active}/13 active, {total:,} edges  |  max node degree = {max_deg_global:,}")
  
  
 def build_hetero_graph(

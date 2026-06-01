@@ -108,6 +108,8 @@ class GIACModel(nn.Module):
             n_layers   = cfg_model["gat_layers"],
             dropout    = cfg_model.get("gat_dropout", 0.3),
             topk_seq   = topk,
+            film_per_channel     = cfg_model.get("film_per_channel", False),
+            use_modality_summary = cfg_model.get("modality_summary", False),
         )
         self.cross_attn = ModalityCrossAttention(
             hidden_dim = H,
