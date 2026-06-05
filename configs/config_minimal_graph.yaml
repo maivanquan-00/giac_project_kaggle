@@ -28,9 +28,9 @@ preprocessing:
 
 graph:
   emqtl_pval_threshold:    0.05
-  max_edges_per_node:      8       # 20 → 8: thưa hơn, chống over-smoothing
+  max_edges_per_node:      8       # cap emQTL out-degree (mỗi CpG ≤ 8 gene)
   max_coregulation_edges:  10
-  ppi_score_threshold:     700
+  ppi_score_threshold:     900     # 700 → 900: chỉ PPI confidence cao nhất (STRING tier) ⇒ ít cạnh PPI
   # ── Chỉ giữ 3 quan hệ kinh điển ──
   use_emqtl:        true
   use_mirna:        true
@@ -40,7 +40,7 @@ graph:
   use_coregulation: false   # BỎ
   use_cpg_island:   false   # BỎ
   reactome_max_pathway_size: 50
-  max_targets_per_mirna:    100
+  max_targets_per_mirna:    15      # 100 → 15: mỗi miRNA giữ 15 target validated mạnh nhất ⇒ ít cạnh miRTarBase
   cpg_island_relation: "Island+Shore"
 
 model:
