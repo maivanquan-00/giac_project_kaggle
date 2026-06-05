@@ -53,7 +53,13 @@
       "PowerShell(python -m py_compile src/data/graph_builder.py)",
       "PowerShell(python -m py_compile src/models/gat_encoder.py src/model.py src/data/graph_builder.py train.py)",
       "PowerShell(& \"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\dl\\\\python.exe\" \"d:\\\\DATN\\\\giac_project_kaggle\\\\_tmp_v1flags_test.py\")",
-      "PowerShell(python -c \"import yaml; [print\\(f, '->', yaml.safe_load\\(open\\(f,encoding='utf-8'\\)\\)['graph'].get\\('max_edges_per_node'\\), '| flags', yaml.safe_load\\(open\\(f,encoding='utf-8'\\)\\)['model'].get\\('modality_summary'\\), yaml.safe_load\\(open\\(f,encoding='utf-8'\\)\\)['model'].get\\('film_per_channel'\\)\\) for f in ['configs/config_v1_fast_plus.yaml','configs/config_v1_fast_nocap.yaml']]\")"
+      "PowerShell(python -c \"import yaml; [print\\(f, '->', yaml.safe_load\\(open\\(f,encoding='utf-8'\\)\\)['graph'].get\\('max_edges_per_node'\\), '| flags', yaml.safe_load\\(open\\(f,encoding='utf-8'\\)\\)['model'].get\\('modality_summary'\\), yaml.safe_load\\(open\\(f,encoding='utf-8'\\)\\)['model'].get\\('film_per_channel'\\)\\) for f in ['configs/config_v1_fast_plus.yaml','configs/config_v1_fast_nocap.yaml']]\")",
+      "PowerShell(python -m py_compile train.py src/utils.py)",
+      "PowerShell(python -m py_compile train.py)",
+      "PowerShell(if \\($?\\) { \"train.py compiled OK\" })",
+      "PowerShell(python -m py_compile train.py run_multi_seed.py src/model.py src/models/gat_encoder.py src/models/classifier.py src/data/graph_builder.py src/data/dataset.py src/utils.py)",
+      "PowerShell(if \\($?\\) { \"all core modules compiled OK\" })",
+      "PowerShell(python -m py_compile scripts/feature_selection_diagnostic.py)"
     ],
     "additionalDirectories": [
       "d:\\DATN\\giac_project_kaggle"

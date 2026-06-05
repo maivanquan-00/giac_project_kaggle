@@ -90,6 +90,22 @@ def print_classification_report(y_true, y_pred, class_names=None):
     ))
 
 
+def print_confusion_matrix_text(y_true, y_pred, class_names=None, indent="  "):
+    """In confusion matrix dạng text (hàng = true, cột = pred) để đọc thẳng trong log,
+    khỏi mở file ảnh. Dùng để soi 1 class bị nhầm thành class nào."""
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    n = len(class_names) if class_names is not None else max(int(y_true.max()), int(y_pred.max())) + 1
+    if class_names is None:
+        class_names = [f"C{i}" for i in range(n)]
+    cm = confusion_matrix(y_true, y_pred, labels=np.arange(n))
+    short = [c[:6] for c in class_names]
+    print(indent + "true\\pred".ljust(10) + "".join(s.rjust(8) for s in short))
+    for i, name in enumerate(class_names):
+        row = "".join(str(int(cm[i, j])).rjust(8) for j in range(n))
+        print(indent + name[:10].ljust(10) + row)
+
+
 def save_confusion_matrix_csv(y_true, y_pred, path, class_names=None):
     """Lưu confusion matrix dạng số tuyệt đối ra CSV.
 

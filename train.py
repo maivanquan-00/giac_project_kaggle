@@ -28,20 +28,11 @@ from src.utils import (
     EarlyStopping, compute_metrics, compute_per_cancer_type_f1, ensure_dir,
     plot_confusion_matrix_figure, plot_cv_metrics,
     plot_split_class_distribution, plot_training_curves,
-    print_classification_report, print_metrics,
+    print_classification_report, print_confusion_matrix_text, print_metrics,
     save_checkpoint, save_confusion_matrix_csv, set_seed,
 )
 
 _DEFAULT_subtype_names = ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
-
-
-def build_model(dims, cfg_model, cfg_train):
-    """Chọn kiến trúc theo cfg_model['arch'] ('v1' mặc định | 'v2' patient-conditioned)."""
-    arch = str(cfg_model.get("arch", "v1")).lower()
-    if arch == "v2":
-        from src.model_v2 import GIACModelV2
-        return GIACModelV2(dims, cfg_model, cfg_train)
-    return GIACModel(dims, cfg_model, cfg_train)
 
 
 def parse_args():
@@ -211,7 +202,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     edge_stats = get_edge_stats(graph)
-    model = build_model(dims, cfg["model"], cfg["training"]).to(device)
+    model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
 
     # Class weight strategy (focal alpha):
     #   - use_class_weights=false → neutral (all ones)
@@ -226,31 +217,17 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     emb_wd    = cfg["training"].get("node_emb_weight_decay", base_wd * 5)
     base_lr   = cfg["training"]["learning_rate"]
     node_emb_ids = {id(p) for p in model.gat.node_emb.parameters()}
-    # v2: patient-injection params (value_scale/value_gamma) → KHÔNG weight decay,
-    # tránh dìm tín hiệu bệnh nhân về 0. Rỗng với v1.
-    inject_ids = set()
-    if hasattr(model.gat, "value_scale"):
-        inject_ids = {id(p) for p in list(model.gat.value_scale.parameters())
-                      + list(model.gat.value_gamma.parameters())}
-    param_groups = [
-        {"params": [p for p in model.parameters()
-                    if id(p) not in node_emb_ids and id(p) not in inject_ids],
+    optimizer = torch.optim.AdamW([
+        {"params": [p for p in model.parameters() if id(p) not in node_emb_ids],
          "lr": base_lr, "weight_decay": base_wd},
         {"params": list(model.gat.node_emb.parameters()), "lr": base_lr, "weight_decay": emb_wd},
-    ]
-    if inject_ids:
-        param_groups.append(
-            {"params": list(model.gat.value_scale.parameters())
-             + list(model.gat.value_gamma.parameters()),
-             "lr": base_lr, "weight_decay": 0.0}
-        )
-    optimizer = torch.optim.AdamW(param_groups)
+    ])
 
     sched_name = cfg["training"].get("scheduler", "onecycle").lower()
     max_lr = cfg["training"].get("max_learning_rate", base_lr * 5)
     if sched_name == "onecycle":
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer, max_lr=[max_lr] * len(param_groups),
+            optimizer, max_lr=[max_lr, max_lr],
             epochs=cfg["training"]["epochs"],
             steps_per_epoch=max(len(train_loader), 1),
             pct_start=cfg["training"].get("onecycle_pct_start", 0.1),
@@ -357,6 +334,9 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         print(f"\n  Classification report - {fold_name}:")
         print_classification_report(test_labels, test_preds,
                                     class_names=subtype_names[:num_classes])
+        print(f"\n  Confusion matrix - {fold_name} (hàng=true, cột=pred):")
+        print_confusion_matrix_text(test_labels, test_preds,
+                                    class_names=subtype_names[:num_classes])
 
     print("  Per-class F1: " + "  ".join(
         f"{name}={per_class_f1[i]:.4f}" for i, name in enumerate(subtype_names[:num_classes])
@@ -368,15 +348,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print(f"  Attention mirna: std={attn['mirna_std']:.4f} max={attn['mirna_max']:.4f} "
           f"nnz={attn['mirna_nnz']:.3f} w={attn['modality_w_mirna']:.3f}")
 
-    if hasattr(model.gat, "film_summary"):
-        film = model.gat.film_summary()           # v2: per-channel FiLM → scalar mean
-    else:
-        film = {
-            "cpg_gamma":   model.gat.film_cpg_gamma.item(),
-            "cpg_beta":    model.gat.film_cpg_beta.item(),
-            "mirna_gamma": model.gat.film_mirna_gamma.item(),
-            "mirna_beta":  model.gat.film_mirna_beta.item(),
-        }
+    film = model.gat.film_summary()
     print(f"  FiLM cpg γ={film['cpg_gamma']:+.4f} β={film['cpg_beta']:+.4f}  ·  "
           f"mirna γ={film['mirna_gamma']:+.4f} β={film['mirna_beta']:+.4f}")
 
