@@ -59,7 +59,9 @@
       "PowerShell(if \\($?\\) { \"train.py compiled OK\" })",
       "PowerShell(python -m py_compile train.py run_multi_seed.py src/model.py src/models/gat_encoder.py src/models/classifier.py src/data/graph_builder.py src/data/dataset.py src/utils.py)",
       "PowerShell(if \\($?\\) { \"all core modules compiled OK\" })",
-      "PowerShell(python -m py_compile scripts/feature_selection_diagnostic.py)"
+      "PowerShell(python -m py_compile scripts/feature_selection_diagnostic.py)",
+      "Bash(awk '/Feature selection diagnostic|GENE|METH|MIRNA|F_crit|rank |Đuôi|cutoff|FDR|F > 2|p<0.05|F-mass|Phân bố class|ĐỌC KẾT/' docs/runs/testnew.md)",
+      "PowerShell(python -m py_compile train.py run_multi_seed.py)"
     ],
     "additionalDirectories": [
       "d:\\DATN\\giac_project_kaggle"

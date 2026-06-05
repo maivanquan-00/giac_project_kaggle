@@ -39,6 +39,9 @@ def parse_args():
                         help="Root dir cho output. Default: results/<config_name>_multiseed_<timestamp>")
     parser.add_argument("--cv-folds", type=int, default=None,
                         help="Override cv_folds (pass through to train.py)")
+    parser.add_argument("--gene-top-k", type=int, default=None, help="Sweep K: pass through to train.py")
+    parser.add_argument("--meth-top-k", type=int, default=None, help="Sweep K: pass through to train.py")
+    parser.add_argument("--mirna-top-k", type=int, default=None, help="Sweep K: pass through to train.py")
     parser.add_argument("--python", default=sys.executable,
                         help="Python executable (default: current sys.executable)")
     return parser.parse_args()
@@ -122,6 +125,11 @@ def main():
         ]
         if args.cv_folds is not None:
             cmd += ["--cv-folds", str(args.cv_folds)]
+        for flag, val in [("--gene-top-k", args.gene_top_k),
+                          ("--meth-top-k", args.meth_top_k),
+                          ("--mirna-top-k", args.mirna_top_k)]:
+            if val is not None:
+                cmd += [flag, str(val)]
 
         print(f"$ {' '.join(cmd)}", flush=True)
 

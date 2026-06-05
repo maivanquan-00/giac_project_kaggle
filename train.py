@@ -43,6 +43,9 @@ def parse_args():
                         help="Override training.seed in config. Use cho multi-seed runs.")
     parser.add_argument("--save-dir", type=str, default=None,
                         help="Override logging.save_dir. Use để tách output từng seed.")
+    parser.add_argument("--gene-top-k", type=int, default=None, help="Override preprocessing.gene_top_k (sweep K).")
+    parser.add_argument("--meth-top-k", type=int, default=None, help="Override preprocessing.meth_top_k (sweep K).")
+    parser.add_argument("--mirna-top-k", type=int, default=None, help="Override preprocessing.mirna_top_k (sweep K).")
     return parser.parse_args()
 
 
@@ -568,6 +571,12 @@ def main():
         cfg["training"]["seed"] = args.seed
     if args.save_dir is not None:
         cfg["logging"]["save_dir"] = args.save_dir
+    if args.gene_top_k is not None:
+        cfg["preprocessing"]["gene_top_k"] = args.gene_top_k
+    if args.meth_top_k is not None:
+        cfg["preprocessing"]["meth_top_k"] = args.meth_top_k
+    if args.mirna_top_k is not None:
+        cfg["preprocessing"]["mirna_top_k"] = args.mirna_top_k
 
     seed = cfg["training"]["seed"]
     set_seed(seed)

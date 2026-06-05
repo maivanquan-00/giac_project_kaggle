@@ -7,7 +7,7 @@ data:
 preprocessing:
   gene_top_k:   3500
   meth_top_k:   3500
-  mirna_top_k:  null      # null = dùng tất cả miRNA sau low-expression filter (~593)
+  mirna_top_k:  450       # cắt từ 588: tín hiệu miRNA chết ~rank 450 (F<F_crit), bỏ ~165 miRNA nhiễu (diagnostic 2026-06-01)
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5

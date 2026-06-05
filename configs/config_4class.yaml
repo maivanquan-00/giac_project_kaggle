@@ -11,7 +11,7 @@ data:
 preprocessing:
   gene_top_k:   3500
   meth_top_k:   3500
-  mirna_top_k:  null
+  mirna_top_k:  450       # diagnostic: tín hiệu miRNA chết ~rank 450, bỏ ~165 nhiễu
   feature_selection_method: "anova"
   val_size:  0.15
   cv_folds:  5
