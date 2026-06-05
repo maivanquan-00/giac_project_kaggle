@@ -22,10 +22,13 @@ graph:
   max_edges_per_node:      20
   max_coregulation_edges:  10
   ppi_score_threshold:     700
-  use_ppi:          true
-  use_reactome:     true
-  use_mirna:        true
-  use_mirna_family: true
+  # ── Bật/tắt từng relation (để ablation đồ thị) ──
+  use_emqtl:        true    # CpG→Gene (methylation điều hoà expression)
+  use_mirna:        true    # miRNA→Gene (miRTarBase, curated)
+  use_ppi:          true    # Gene↔Gene (STRING PPI)
+  use_reactome:     true    # Gene↔Gene (Reactome co-pathway)
+  use_mirna_family: true    # miRNA↔miRNA (family)
+  use_coregulation: true    # CpG↔miRNA (derived, 2-hop)
   reactome_max_pathway_size: 50
   max_targets_per_mirna:    100
   use_cpg_island:      true   # true để bật CpG↔CpG edges (cần manifest_file trong data)

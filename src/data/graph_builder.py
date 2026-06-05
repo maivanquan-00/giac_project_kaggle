@@ -95,17 +95,19 @@ def build_hetero_graph(
     graph["mirna"].num_nodes = len(mirna_names)
 
     # ── 1+2: CpG ↔ Gene  (TCGA emQTL) ─────────────────────────────────
-    cpg_gene_edges = _load_emqtl_edges(
-        giac_dir     = giac_dir,
-        cancer_types = cfg_data["cancer_types"],
-        cpg_idx      = cpg_idx,
-        gene_idx     = gene_idx,
-        pval_thresh  = cfg_graph["emqtl_pval_threshold"],
-        max_edges    = cfg_graph["max_edges_per_node"],
-    )
-    if cpg_gene_edges is not None:
-        graph["cpg", "regulates", "gene"].edge_index    = cpg_gene_edges
-        graph["gene", "regulated_by", "cpg"].edge_index = cpg_gene_edges.flip(0)
+    cpg_gene_edges = None
+    if cfg_graph.get("use_emqtl", True):
+        cpg_gene_edges = _load_emqtl_edges(
+            giac_dir     = giac_dir,
+            cancer_types = cfg_data["cancer_types"],
+            cpg_idx      = cpg_idx,
+            gene_idx     = gene_idx,
+            pval_thresh  = cfg_graph["emqtl_pval_threshold"],
+            max_edges    = cfg_graph["max_edges_per_node"],
+        )
+        if cpg_gene_edges is not None:
+            graph["cpg", "regulates", "gene"].edge_index    = cpg_gene_edges
+            graph["gene", "regulated_by", "cpg"].edge_index = cpg_gene_edges.flip(0)
 
     # ── 3: Gene ↔ Gene  (STRING PPI) ──────────────────────────────────
     if cfg_graph.get("use_ppi", True):
@@ -153,7 +155,8 @@ def build_hetero_graph(
             graph["mirna", "samefamily", "mirna"].edge_index = family_edges
 
     # ── 8+9: CpG ↔ miRNA  (co-regulation, derived) ────────────────────
-    if cpg_gene_edges is not None and mirna_edges is not None:
+    if (cfg_graph.get("use_coregulation", True)
+            and cpg_gene_edges is not None and mirna_edges is not None):
         cpg_mirna_edges, mirna_cpg_edges = _build_coregulation_edges(
             cpg_gene_edges     = cpg_gene_edges,
             mirna_gene_edges   = mirna_edges,
