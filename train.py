@@ -191,6 +191,20 @@ def compute_class_weights(dataset, num_classes, device):
     return torch.tensor(weights / weights.mean(), dtype=torch.float32, device=device)
 
 
+def _selection_score(m, selection):
+    """Giá trị chọn checkpoint (CAO = tốt hơn). Hỗ trợ:
+    val_f1 (macro, default) · val_f1_weighted · val_accuracy · val_loss."""
+    if selection == "val_loss":
+        return -m["loss"]
+    if selection == "val_f1_weighted":
+        return m["f1_weighted"]
+    if selection == "val_accuracy":
+        return m["accuracy"]
+    if selection == "val_acc_f1w":          # cân bằng CẢ Acc lẫn Weighted F1
+        return 0.5 * (m["accuracy"] + m["f1_weighted"])
+    return m["f1"]
+
+
 def compute_per_class_f1(labels, preds, num_classes):
     vals = f1_score(
         labels,
@@ -273,7 +287,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
 
     selection = cfg["training"].get("model_selection_metric", "val_f1")
     best_loss = float("inf")
-    best_f1   = 0.0
+    best_sel  = float("-inf")
     save_dir  = cfg["logging"]["save_dir"]
     viz_dir   = os.path.join(save_dir, "visualizations", fold_name.lower().replace(" ", "_"))
     ensure_dir(viz_dir)
@@ -310,15 +324,10 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         history["val_f1"].append(vl["f1"])
         history["val_loss"].append(vl["loss"])
 
-        improved = False
-        if selection == "val_loss":
-            if vl["loss"] < best_loss:
-                improved = True
-        else:
-            if vl["f1"] > best_f1:
-                improved = True
-        if vl["f1"] > best_f1:
-            best_f1 = vl["f1"]
+        sel_score = _selection_score(vl, selection)   # cao = tốt
+        improved = sel_score > best_sel
+        if improved:
+            best_sel = sel_score
         if vl["loss"] < best_loss:
             best_loss = vl["loss"]
 
@@ -329,8 +338,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
                              "feature_names": feature_names, "dims": dims,
                              "fold_name": fold_name, "config": cfg, "history": history})
 
-        es_score = -vl["loss"] if selection == "val_loss" else vl["f1"]
-        if early_stop.step(es_score):
+        if early_stop.step(sel_score):
             break
     stop_epoch = epoch
 

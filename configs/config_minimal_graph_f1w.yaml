@@ -1,0 +1,90 @@
+# GIAC GI 5-class — minimal graph (v1), TỐI ƯU cho Weighted F1.
+# = config_minimal_graph.yaml NHƯNG đổi 2 thứ để ưu tiên Weighted F1 (đánh đổi macro xuống):
+#   1. model_selection_metric: val_f1_weighted  (chọn checkpoint theo Weighted, ko phải macro)
+#   2. use_manual_focal_alpha: false            (auto thay vì boost HM-SNV=5 cực đoan
+#                                                → bớt hy sinh majority → Weighted lên)
+# So với config_minimal_graph.yaml (Weighted 0.8540, Macro 0.7068) để thấy đánh đổi.
+
+data:
+  data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
+  graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
+  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
+  cancer_types: ["COAD", "ESCA", "READ", "STAD"]
+
+preprocessing:
+  gene_top_k:   3500
+  meth_top_k:   3500
+  mirna_top_k:  450
+  feature_selection_method: "anova"
+  val_size:  0.15
+  cv_folds:  5
+  minority_boost_gene:  300
+  minority_boost_meth:  200
+  minority_boost_mirna: 0
+  minority_classes: [1, 3, 4]
+  stratify_by_cancer_type: true
+
+graph:
+  emqtl_pval_threshold:    0.05
+  max_edges_per_node:      8
+  max_coregulation_edges:  10
+  ppi_score_threshold:     900
+  use_emqtl:        true
+  use_mirna:        true
+  use_ppi:          true
+  use_reactome:     false
+  use_mirna_family: false
+  use_coregulation: false
+  use_cpg_island:   false
+  reactome_max_pathway_size: 50
+  max_targets_per_mirna:    15
+  cpg_island_relation: "Island+Shore"
+
+model:
+  hidden_dim:  96
+  gat_heads:   4
+  gat_layers:  2
+  gat_dropout: 0.3
+  topk_seq:    32
+  ca_heads:    4
+  ca_dropout:  0.4
+  sparsemax_alpha: 1.5
+  num_classes: 5
+  classifier_dropout: 0.5
+  final_dim:   32
+
+training:
+  epochs:      150
+  batch_size:  32
+  learning_rate:     1.0e-4
+  max_learning_rate: 5.0e-4
+  scheduler: "onecycle"
+  onecycle_pct_start:        0.1
+  onecycle_div_factor:       10.0
+  onecycle_final_div_factor: 100.0
+  weight_decay:          5.0e-3
+  node_emb_weight_decay: 1.5e-2
+  focal_gamma:     2.0
+  use_manual_focal_alpha: false    # <<< auto (bỏ boost HM-SNV=5) → bớt hy sinh majority
+  focal_alpha:     [0.077, 0.44, 0.35, 5.0, 1.63]   # bị override bởi auto-compute
+  label_smoothing: 0.05
+  balanced_sampler: false
+  lambda_frobenius: 0.002
+  patience: 15
+  min_epochs: 40
+  model_selection_metric: "val_acc_f1w"   # <<< chọn checkpoint cân bằng CẢ Acc + Weighted F1
+  seed: 42
+  loss_name: "focal"
+  subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
+  minority_augmentation:
+    enabled: true
+    class: [1, 3, 4]
+    noise_std: 0.10
+
+logging:
+  save_dir:     "/kaggle/working/checkpoints_minimal_f1w/"
+  log_interval: 5
+  print_classification_report: true
+
+interpretability:
+  top_k_features: 50

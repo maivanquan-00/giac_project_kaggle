@@ -65,7 +65,8 @@
       "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_minimal_graph.yaml',encoding='utf-8'\\)\\)['graph']; print\\('relations on:', [k for k in c if k.startswith\\('use_'\\) and c[k]]\\); print\\('max_edges:', c['max_edges_per_node']\\)\")",
       "PowerShell(if \\($?\\) { \"graph_builder OK\" })",
       "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_minimal_graph_v2.yaml',encoding='utf-8'\\)\\); print\\('arch', c['model']['arch'], '| gat_chunk', c['model']['gat_chunk'], '| relations on:', [k for k in c['graph'] if k.startswith\\('use_'\\) and c['graph'][k]]\\)\")",
-      "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_brca_minimal_v2.yaml',encoding='utf-8'\\)\\); print\\('arch', c['model']['arch'], '| classes', c['model']['num_classes'], '| relations on:', [k for k in c['graph'] if k.startswith\\('use_'\\) and c['graph'][k]], '| cancer', c['data']['cancer_types']\\)\")"
+      "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_brca_minimal_v2.yaml',encoding='utf-8'\\)\\); print\\('arch', c['model']['arch'], '| classes', c['model']['num_classes'], '| relations on:', [k for k in c['graph'] if k.startswith\\('use_'\\) and c['graph'][k]], '| cancer', c['data']['cancer_types']\\)\")",
+      "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_minimal_graph_f1w.yaml',encoding='utf-8'\\)\\)['training']; print\\('selection:', c['model_selection_metric'], '| manual_focal:', c['use_manual_focal_alpha']\\)\")"
     ],
     "additionalDirectories": [
       "d:\\DATN\\giac_project_kaggle"
