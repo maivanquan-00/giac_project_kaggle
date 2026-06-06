@@ -68,6 +68,32 @@ def _print_relation_summary(graph) -> None:
             n_active += 1
     print(f"   {'─' * 74}")
     print(f"   Total: {n_active}/13 active, {total:,} edges  |  max node degree = {max_deg_global:,}")
+    _print_degree_distribution(graph)
+
+
+def _print_degree_distribution(graph) -> None:
+    """Phân bố degree mỗi node-type (tổng qua các relation, bỏ self-loop).
+
+    Để thấy đồ thị 'dày' thật hay chỉ vài hub: nhìn avg/median (thấp = thưa) vs
+    max (cao = có hub). Nếu median thấp mà max cao → thưa + vài hub sinh học.
+    """
+    print("   ── Node degree (bỏ self-loop) ──")
+    for nt in ["gene", "cpg", "mirna"]:
+        n = graph[nt].num_nodes
+        deg = torch.zeros(n, dtype=torch.long)
+        for (s, r, d), ei in graph.edge_index_dict.items():
+            if r == "self_loop":
+                continue
+            if s == nt:
+                deg += torch.bincount(ei[0].cpu(), minlength=n)
+            if d == nt:
+                deg += torch.bincount(ei[1].cpu(), minlength=n)
+        degf = deg.float()
+        connected = int((deg > 0).sum())
+        p95 = int(torch.quantile(degf, 0.95).item()) if n > 0 else 0
+        print(f"     {nt:5s}: avg={degf.mean():.1f}  median={int(degf.median())}  "
+              f"p95={p95}  max={int(deg.max())}  "
+              f"| deg>50: {int((deg > 50).sum())} node  | có cạnh: {connected}/{n}")
  
  
 def build_hetero_graph(
