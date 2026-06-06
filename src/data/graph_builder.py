@@ -251,19 +251,20 @@ def _load_emqtl_edges(
 ) -> torch.Tensor | None:
     """Load CpG → Gene edges from TCGA emQTL files. Returns None when no edges.
 
-    Dedup (c_i, g_i): cùng 1 cặp CpG-Gene có thể xuất hiện ở nhiều file ung thư
-    (COAD/ESCA/READ/STAD). KHÔNG dedup → cạnh trùng → GAT đếm neighbor 2 lần
-    (lệch attention) + cap max_edges bị bản lặp chiếm chỗ. Connectivity là nhị
-    phân (nối/không), không cần bội số cạnh.
+    Cap ĐỐI XỨNG theo p-value (max_edges áp cho CẢ 2 đầu):
+      - Gom mọi cặp (CpG, gene) pval<thresh, dedup giữ p-value nhỏ nhất (qua nhiều
+        file ung thư COAD/ESCA/READ/STAD).
+      - Sort theo p-value tăng dần, greedy giữ cạnh nếu CẢ degree(CpG) < cap VÀ
+        degree(gene) < cap → mỗi gene giữ `max_edges` CpG mạnh nhất, mỗi CpG giữ
+        `max_edges` gene mạnh nhất.
+    Khác cap cũ (chỉ chặn out-degree CpG → gene popular vẫn hub 400+): cap này
+    chặn HUB GENE (in-degree) → đồ thị thưa đều, defensible. max_edges=None = ko cap.
     """
-    src_list, dst_list = [], []
-    cpg_edge_count = {}
-    seen = set()
-
+    # 1) Gom candidate: (c_i, g_i) → p-value nhỏ nhất
+    best_pval: dict = {}
     for ct in cancer_types:
         fpath = os.path.join(giac_dir, f"TCGA_emQTL_{ct}.txt")
         if not os.path.isfile(fpath):
-            # Handle: path không tồn tại, OR là directory (case LGG_extend/TCGA_emQTL_LGG.txt là folder)
             if os.path.isdir(fpath):
                 print(f"   ⚠️  TCGA_emQTL_{ct}.txt là DIRECTORY (not file) — skip emQTL cho {ct}")
             continue
@@ -287,17 +288,26 @@ def _load_emqtl_edges(
                 g_name = str(row[1]).strip().upper()
                 if c_name not in cpg_idx or g_name not in gene_idx:
                     continue
-                c_i = cpg_idx[c_name]
-                g_i = gene_idx[g_name]
-                key = (c_i, g_i)
-                if key in seen:                       # bỏ cặp trùng (qua nhiều file ung thư)
-                    continue
-                if max_edges is not None and cpg_edge_count.get(c_i, 0) >= max_edges:
-                    continue                           # max_edges=None → không giới hạn degree
-                seen.add(key)
-                src_list.append(c_i)
-                dst_list.append(g_i)
-                cpg_edge_count[c_i] = cpg_edge_count.get(c_i, 0) + 1
+                key = (cpg_idx[c_name], gene_idx[g_name])
+                pv = float(row[2])
+                if key not in best_pval or pv < best_pval[key]:
+                    best_pval[key] = pv
+
+    if not best_pval:
+        return None
+
+    # 2) Sort theo p-value, greedy cap đối xứng cả 2 đầu
+    items = sorted(best_pval.items(), key=lambda kv: kv[1])
+    cpg_deg, gene_deg = {}, {}
+    src_list, dst_list = [], []
+    for (c_i, g_i), _pv in items:
+        if max_edges is not None and (cpg_deg.get(c_i, 0) >= max_edges
+                                      or gene_deg.get(g_i, 0) >= max_edges):
+            continue
+        src_list.append(c_i)
+        dst_list.append(g_i)
+        cpg_deg[c_i]  = cpg_deg.get(c_i, 0) + 1
+        gene_deg[g_i] = gene_deg.get(g_i, 0) + 1
 
     if not src_list:
         return None
