@@ -63,7 +63,8 @@
       "Bash(awk '/Feature selection diagnostic|GENE|METH|MIRNA|F_crit|rank |Đuôi|cutoff|FDR|F > 2|p<0.05|F-mass|Phân bố class|ĐỌC KẾT/' docs/runs/testnew.md)",
       "PowerShell(python -m py_compile train.py run_multi_seed.py)",
       "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_minimal_graph.yaml',encoding='utf-8'\\)\\)['graph']; print\\('relations on:', [k for k in c if k.startswith\\('use_'\\) and c[k]]\\); print\\('max_edges:', c['max_edges_per_node']\\)\")",
-      "PowerShell(if \\($?\\) { \"graph_builder OK\" })"
+      "PowerShell(if \\($?\\) { \"graph_builder OK\" })",
+      "PowerShell(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_minimal_graph_v2.yaml',encoding='utf-8'\\)\\); print\\('arch', c['model']['arch'], '| gat_chunk', c['model']['gat_chunk'], '| relations on:', [k for k in c['graph'] if k.startswith\\('use_'\\) and c['graph'][k]]\\)\")"
     ],
     "additionalDirectories": [
       "d:\\DATN\\giac_project_kaggle"
