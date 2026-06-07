@@ -1,5 +1,15 @@
-# GIAC GI 5-class - relaxed 3-relation graph + TopK48 + patient-conditioned GAT v2.
-# Quick 3-fold test before committing to a full multi-seed run.
+# GIAC GI 5-class - relaxed 3-relation graph + TopK32 + modality summary token.
+# Purpose: keep the best current relaxed-graph baseline, but let CpG/miRNA use
+# a full-signal patient summary token in addition to TopK tokens.
+#
+# Difference from configs/config_minimal_graph_relaxed_topk32.yaml:
+#   model.modality_summary: true
+#
+# Expected effect:
+#   - Cross-attention sees K+1 tokens per CpG/miRNA modality.
+#   - Token 0 summarizes all selected features of that modality.
+#   - Tokens 1..K remain interpretable TopK patient-specific features.
+#   - Much cheaper than patient-conditioned GAT/v2.
 
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
@@ -13,7 +23,7 @@ preprocessing:
   mirna_top_k:  450
   feature_selection_method: "anova"
   val_size:  0.15
-  cv_folds:  3
+  cv_folds:  5
   minority_boost_gene:  300
   minority_boost_meth:  200
   minority_boost_mirna: 0
@@ -37,13 +47,12 @@ graph:
   cpg_island_relation: "Island+Shore"
 
 model:
-  arch: v2
-  gat_chunk:   4
   hidden_dim:  96
   gat_heads:   4
   gat_layers:  2
   gat_dropout: 0.3
-  topk_seq:    48
+  topk_seq:    32
+  modality_summary: true
   ca_heads:    4
   ca_dropout:  0.4
   sparsemax_alpha: 1.5
@@ -80,7 +89,7 @@ training:
     noise_std: 0.10
 
 logging:
-  save_dir: "/kaggle/working/checkpoints_minimal_relaxed_topk48_v2_fast/"
+  save_dir: "/kaggle/working/checkpoints_minimal_relaxed_topk32_summary/"
   log_interval: 5
   print_classification_report: true
 
