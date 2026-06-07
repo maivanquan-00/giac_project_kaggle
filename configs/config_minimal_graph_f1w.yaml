@@ -1,9 +1,7 @@
-# GIAC GI 5-class — minimal graph (v1), TỐI ƯU cho Weighted F1.
-# = config_minimal_graph.yaml NHƯNG đổi 2 thứ để ưu tiên Weighted F1 (đánh đổi macro xuống):
-#   1. model_selection_metric: val_f1_weighted  (chọn checkpoint theo Weighted, ko phải macro)
-#   2. use_manual_focal_alpha: false            (auto thay vì boost HM-SNV=5 cực đoan
-#                                                → bớt hy sinh majority → Weighted lên)
-# So với config_minimal_graph.yaml (Weighted 0.8540, Macro 0.7068) để thấy đánh đổi.
+# GIAC GI 5-class - minimal graph (v1), auto class-weight ablation.
+# Protocol reset 2026-06-07: all active configs select checkpoints by validation
+# Macro F1 (`val_f1`). This file keeps the auto class-weight variant, but no
+# longer optimizes checkpoint selection for Accuracy/Weighted F1.
 
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
@@ -72,7 +70,7 @@ training:
   lambda_frobenius: 0.002
   patience: 15
   min_epochs: 40
-  model_selection_metric: "val_acc_f1w"   # <<< chọn checkpoint cân bằng CẢ Acc + Weighted F1
+  model_selection_metric: "val_f1"
   seed: 42
   loss_name: "focal"
   subtype_names: ["CIN", "GS", "MSI", "HM-SNV", "EBV"]

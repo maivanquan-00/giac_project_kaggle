@@ -1,12 +1,11 @@
 # GIAC GI 5-class - relaxed 3-relation graph + TopK32, select checkpoint by validation Macro F1.
-# Purpose: test whether scientific/imbalance-aware checkpoint selection changes
-# the result compared with `config_minimal_graph_relaxed_topk32.yaml`.
+# Purpose: explicit relaxed TopK32 config using validation Macro F1 checkpoint selection.
 #
 # Only intended difference:
 #   training.model_selection_metric: "val_f1"
 #
-# Baseline config uses:
-#   training.model_selection_metric: "val_acc_f1w"
+# Current baseline config also uses:
+#   training.model_selection_metric: "val_f1"
 
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"
