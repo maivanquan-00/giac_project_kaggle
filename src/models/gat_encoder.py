@@ -38,7 +38,8 @@ class MultiOmicGATModule(nn.Module):
     def __init__(self, dims: dict, hidden_dim: int, n_heads: int,
                  n_layers: int, dropout: float, topk_seq: int = 32,
                  film_per_channel: bool = False,
-                 use_modality_summary: bool = False):
+                 use_modality_summary: bool = False,
+                 summary_condition_topk: bool = False):
         super().__init__()
         assert hidden_dim % n_heads == 0
         self.n_layers  = n_layers
@@ -50,8 +51,11 @@ class MultiOmicGATModule(nn.Module):
         #   use_modality_summary: thêm 1 token "tóm tắt full-signal" (pool TOÀN BỘ
         #     CpG/miRNA, như nhánh gene) vào đầu chuỗi K/V → tận dụng cả 3500
         #     feature thay vì chỉ top-32, không cần per-patient GAT.
+        #   summary_condition_topk: trộn summary full-signal vào từng token TopK qua
+        #     gate học được; gate init=0 nên ban đầu không phá baseline.
         self.film_per_channel     = film_per_channel
         self.use_modality_summary = use_modality_summary
+        self.summary_condition_topk = summary_condition_topk
 
         self.node_emb = nn.ParameterDict({
             "gene":  nn.Parameter(torch.empty(dims["gene"],  hidden_dim)),
@@ -91,10 +95,13 @@ class MultiOmicGATModule(nn.Module):
         # Summary vector norm for gene query only
         self.gene_norm = nn.LayerNorm(hidden_dim)
 
-        # Full-signal summary token norms (chỉ dùng khi use_modality_summary=True)
-        if use_modality_summary:
+        # Full-signal summary norms (dùng cho summary token hoặc condition TopK)
+        if use_modality_summary or summary_condition_topk:
             self.cpg_sum_norm   = nn.LayerNorm(hidden_dim)
             self.mirna_sum_norm = nn.LayerNorm(hidden_dim)
+        if summary_condition_topk:
+            self.cpg_summary_gate   = nn.Parameter(torch.tensor(0.0))
+            self.mirna_summary_gate = nn.Parameter(torch.tensor(0.0))
 
     def film_summary(self):
         """Trả scalar mean của γ/β (tương thích reporting cho cả scalar lẫn vector)."""
@@ -128,15 +135,23 @@ class MultiOmicGATModule(nn.Module):
         z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq,
                                      self.mirna_pos_emb, self.film_mirna_gamma, self.film_mirna_beta)
 
-        # ── Full-signal summary token: pool TOÀN BỘ feature (như gene), ghép vào
-        #    đầu chuỗi K/V → cross-attention thấy [tóm-tắt-toàn-cục, top-K] ──
-        if self.use_modality_summary:
+        # ── Full-signal summary: pool TOÀN BỘ feature (như gene). Summary này có
+        #    thể là token riêng, hoặc được trộn vào từng TopK token qua gate. ──
+        if self.use_modality_summary or self.summary_condition_topk:
             z_cpg_full = self.cpg_sum_norm(
                 torch.matmul(batch["meth"], x_dict["cpg"]) / math.sqrt(batch["meth"].shape[1])
             ).unsqueeze(1)                                  # (B, 1, H)
             z_mirna_full = self.mirna_sum_norm(
                 torch.matmul(batch["mirna"], x_dict["mirna"]) / math.sqrt(batch["mirna"].shape[1])
             ).unsqueeze(1)
+
+            if self.summary_condition_topk:
+                z_cpg_seq = z_cpg_seq + torch.tanh(self.cpg_summary_gate) * z_cpg_full
+                z_mirna_seq = z_mirna_seq + torch.tanh(self.mirna_summary_gate) * z_mirna_full
+
+        # ── Full-signal summary token: ghép vào đầu chuỗi K/V để cross-attention
+        #    thấy [tóm-tắt-toàn-cục, top-K] ──
+        if self.use_modality_summary:
             z_cpg_seq   = torch.cat([z_cpg_full,   z_cpg_seq],   dim=1)   # (B, K+1, H)
             z_mirna_seq = torch.cat([z_mirna_full, z_mirna_seq], dim=1)
 
