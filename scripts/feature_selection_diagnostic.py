@@ -43,7 +43,7 @@ def benjamini_hochberg(pvals: np.ndarray, alpha: float) -> int:
     return int(k_max + 1)
 
 
-def analyze_modality(name: str, X: np.ndarray, y: np.ndarray, current_top_k):
+def analyze_modality(name: str, X: np.ndarray, y: np.ndarray, current_top_k, brief: bool = False):
     n_samples, n_total = X.shape
     n_classes = len(np.unique(y))
 
@@ -64,6 +64,18 @@ def analyze_modality(name: str, X: np.ndarray, y: np.ndarray, current_top_k):
     df2 = n_samples - n_classes
     F_crit_05 = stats.f.ppf(0.95, df1, df2)
     F_crit_01 = stats.f.ppf(0.99, df1, df2)
+
+    if brief:
+        n_fdr05 = benjamini_hochberg(p, 0.05)
+        n_sig = int((F > F_crit_05).sum())   # significant chưa hiệu chỉnh
+        if n_var > 5000:
+            # pool lớn (gene/CpG): significance bão hoà → giữ top_k thực dụng
+            sug = f"signal bão hoà → giữ top_k {current_top_k if current_top_k else 3500}"
+        else:
+            # pool nhỏ (miRNA): cắt theo số significant
+            sug = f"pool nhỏ → cắt mirna_top_k ≈ {n_fdr05}"
+        print(f"  {name:5s}: {n_var:>6} var | FDR<0.05={n_fdr05:>6} | F>Fcrit={n_sig:>6} | {sug}")
+        return
 
     print(f"\n{'='*66}")
     print(f"  {name.upper()}  |  {n_total} features ({n_var} biến thiên), "
@@ -124,30 +136,32 @@ def analyze_modality(name: str, X: np.ndarray, y: np.ndarray, current_top_k):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/config.yaml")
+    ap.add_argument("--brief", action="store_true", help="In gọn 1 dòng/modality (số FDR + gợi ý K).")
     args = ap.parse_args()
 
     with open(args.config, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     pre = _get_preprocess_cfg(cfg)
 
-    print(f"\n📊 Feature selection diagnostic — {args.config}")
     raw = load_aligned_data(cfg)
     y = raw["labels"]
-    print(f"  Phân bố class: {dict(zip(*np.unique(y, return_counts=True)))}")
+    dist = dict(zip(*np.unique(y, return_counts=True)))
+    print(f"\n📊 {args.config}  |  classes={dist}")
 
     for name, key, topk_key in [
         ("gene",  "gene",  "gene_top_k"),
         ("meth",  "meth",  "meth_top_k"),
         ("mirna", "mirna", "mirna_top_k"),
     ]:
-        analyze_modality(name, raw[key], y, pre.get(topk_key))
+        analyze_modality(name, raw[key], y, pre.get(topk_key), brief=args.brief)
 
-    print(f"\n{'='*66}")
-    print("  ĐỌC KẾT QUẢ:")
-    print("  - FDR<0.05 = số feature 'có ý nghĩa thống kê' → ứng viên cho số K.")
-    print("  - Nếu F tại cutoff < F_crit → đang lấy nhiễu (giảm K).")
-    print("  - Nếu đuôi vẫn dốc / FDR>top_k → đang cắt mất tín hiệu (tăng K).")
-    print(f"{'='*66}")
+    if not args.brief:
+        print(f"\n{'='*66}")
+        print("  ĐỌC KẾT QUẢ:")
+        print("  - FDR<0.05 = số feature 'có ý nghĩa thống kê' → ứng viên cho số K.")
+        print("  - Nếu F tại cutoff < F_crit → đang lấy nhiễu (giảm K).")
+        print("  - Nếu đuôi vẫn dốc / FDR>top_k → đang cắt mất tín hiệu (tăng K).")
+        print(f"{'='*66}")
 
 
 if __name__ == "__main__":
