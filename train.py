@@ -63,6 +63,12 @@ def parse_args():
                         help="Override training.epochs (giảm để chạy nhanh khi ablation).")
     parser.add_argument("--no-gat", action="store_true",
                         help="Ablation: tắt GAT message passing (chỉ node_emb + cross-attention).")
+    parser.add_argument("--no-film", action="store_true",
+                        help="Ablation: tắt FiLM γ/β học được (dùng z = E + E·value).")
+    parser.add_argument("--no-pos", action="store_true",
+                        help="Ablation: tắt rank positional encoding của top-K.")
+    parser.add_argument("--gat-init-residual", type=float, default=None,
+                        help="GCNII initial residual α (0=off, ~0.1-0.3 chống over-smoothing).")
     return parser.parse_args()
 
 
@@ -627,6 +633,12 @@ def main():
             cfg["training"]["min_epochs"] = max(1, args.epochs // 2)
     if args.no_gat:
         cfg["model"]["use_gat"] = False
+    if args.no_film:
+        cfg["model"]["use_film"] = False
+    if args.no_pos:
+        cfg["model"]["use_pos_emb"] = False
+    if args.gat_init_residual is not None:
+        cfg["model"]["gat_init_residual"] = args.gat_init_residual
 
     seed = cfg["training"]["seed"]
     set_seed(seed)

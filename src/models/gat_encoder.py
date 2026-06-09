@@ -41,14 +41,24 @@ class MultiOmicGATModule(nn.Module):
                  use_modality_summary: bool = False,
                  summary_condition_topk: bool = False,
                  topk_selection: str = "zscore",
-                 use_gat: bool = True):
+                 use_gat: bool = True,
+                 use_film: bool = True,
+                 use_pos_emb: bool = True,
+                 gat_init_residual: float = 0.0):
         super().__init__()
         assert hidden_dim % n_heads == 0
         self.n_layers  = n_layers
         self.hidden_dim = hidden_dim
-        # Ablation: use_gat=False → bỏ message passing, dùng thẳng node_emb làm x_dict
-        # (kiểm chứng đồ thị/GAT có đóng góp gì ngoài embedding học được + cross-attention).
-        self.use_gat = use_gat
+        # Ablation các thành phần "thêm thắt" (giữ cái nào chứng minh được giá trị):
+        #   use_gat=False     → bỏ message passing, dùng thẳng node_emb.
+        #   use_film=False    → bỏ γ/β học được, dùng z = E + E·value (baseline đơn giản).
+        #   use_pos_emb=False → bỏ rank positional encoding (top-K thành tập bất biến hoán vị).
+        self.use_gat     = use_gat
+        self.use_film    = use_film
+        self.use_pos_emb = use_pos_emb
+        # Initial residual (GCNII): mỗi lớp giữ α phần embedding GỐC → GAT tinh chỉnh
+        # nhẹ thay vì over-smooth. α=0 = behavior cũ; α~0.1-0.3 chống smoothing.
+        self.gat_init_residual = gat_init_residual
         self.topk_seq  = topk_seq  # K tokens per modality for cross-attention
         # Tiêu chí chọn K token: "zscore" (mặc định, |value| lớn nhất = bất thường
         # nhất của bệnh nhân) | "random" (ablation: chọn K ngẫu nhiên/bệnh nhân để
@@ -126,13 +136,15 @@ class MultiOmicGATModule(nn.Module):
 
         # Ablation use_gat=False: bỏ qua message passing → x_dict = node_emb thô.
         if self.use_gat:
+            x0 = dict(x_dict)                            # embedding gốc cho initial residual
+            a  = self.gat_init_residual
             present = {k: v for k, v in graph.edge_index_dict.items() if v.shape[1] > 0}
             for i in range(self.n_layers):
                 out = self.convs[i](x_dict, present)
-                x_dict = {
-                    t: self.layer_norms[i][t](h + F.elu(self.dropout(out.get(t, h))))
-                    for t, h in x_dict.items()
-                }
+                upd = {t: h + F.elu(self.dropout(out.get(t, h))) for t, h in x_dict.items()}
+                if a > 0.0:                              # GCNII: pha lại embedding gốc
+                    upd = {t: (1.0 - a) * v + a * x0[t] for t, v in upd.items()}
+                x_dict = {t: self.layer_norms[i][t](v) for t, v in upd.items()}
 
         # ── Gene: single summary vector (B, H) used as Query (Phase 2.1a baseline) ──
         z_gene = self.gene_norm(
@@ -141,10 +153,12 @@ class MultiOmicGATModule(nn.Module):
         )
 
         # ── CpG/miRNA: top-K sequence as Key/Value ──
-        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq,
-                                     self.cpg_pos_emb, self.film_cpg_gamma, self.film_cpg_beta)
-        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq,
-                                     self.mirna_pos_emb, self.film_mirna_gamma, self.film_mirna_beta)
+        cpg_pos   = self.cpg_pos_emb   if self.use_pos_emb else None
+        mirna_pos = self.mirna_pos_emb if self.use_pos_emb else None
+        cpg_g, cpg_b     = (self.film_cpg_gamma,   self.film_cpg_beta)   if self.use_film else (None, None)
+        mirna_g, mirna_b = (self.film_mirna_gamma, self.film_mirna_beta) if self.use_film else (None, None)
+        z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq, cpg_pos,   cpg_g,   cpg_b)
+        z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq, mirna_pos, mirna_g, mirna_b)
 
         # ── Full-signal summary: pool TOÀN BỘ feature (như gene). Summary này có
         #    thể là token riêng, hoặc được trộn vào từng TopK token qua gate. ──

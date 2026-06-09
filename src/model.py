@@ -113,6 +113,9 @@ class GIACModel(nn.Module):
             summary_condition_topk = cfg_model.get("summary_condition_topk", False),
             topk_selection       = cfg_model.get("topk_selection", "zscore"),
             use_gat              = cfg_model.get("use_gat", True),
+            use_film             = cfg_model.get("use_film", True),
+            use_pos_emb          = cfg_model.get("use_pos_emb", True),
+            gat_init_residual    = cfg_model.get("gat_init_residual", 0.0),
         )
         self.cross_attn = ModalityCrossAttention(
             hidden_dim = H,
