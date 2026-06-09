@@ -24,10 +24,15 @@ import argparse
 import csv
 import json
 import os
+import sys
 from collections import Counter, defaultdict
 
 import numpy as np
 import torch
+
+# Cho phép chạy trực tiếp `python scripts/analyze_per_patient.py` từ gốc repo:
+# thêm thư mục gốc repo (cha của scripts/) vào sys.path để import được `src`.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.data.dataset import build_cv_datasets
 from src.data.graph_builder import build_hetero_graph
