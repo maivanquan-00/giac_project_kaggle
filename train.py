@@ -61,6 +61,8 @@ def parse_args():
                         help="Tiêu chí chọn top-K: zscore (mặc định) | random (ablation).")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override training.epochs (giảm để chạy nhanh khi ablation).")
+    parser.add_argument("--no-gat", action="store_true",
+                        help="Ablation: tắt GAT message passing (chỉ node_emb + cross-attention).")
     return parser.parse_args()
 
 
@@ -623,6 +625,8 @@ def main():
         # min_epochs không được vượt epochs (tránh không bao giờ early-stop được)
         if cfg["training"].get("min_epochs", 0) > args.epochs:
             cfg["training"]["min_epochs"] = max(1, args.epochs // 2)
+    if args.no_gat:
+        cfg["model"]["use_gat"] = False
 
     seed = cfg["training"]["seed"]
     set_seed(seed)

@@ -40,11 +40,15 @@ class MultiOmicGATModule(nn.Module):
                  film_per_channel: bool = False,
                  use_modality_summary: bool = False,
                  summary_condition_topk: bool = False,
-                 topk_selection: str = "zscore"):
+                 topk_selection: str = "zscore",
+                 use_gat: bool = True):
         super().__init__()
         assert hidden_dim % n_heads == 0
         self.n_layers  = n_layers
         self.hidden_dim = hidden_dim
+        # Ablation: use_gat=False → bỏ message passing, dùng thẳng node_emb làm x_dict
+        # (kiểm chứng đồ thị/GAT có đóng góp gì ngoài embedding học được + cross-attention).
+        self.use_gat = use_gat
         self.topk_seq  = topk_seq  # K tokens per modality for cross-attention
         # Tiêu chí chọn K token: "zscore" (mặc định, |value| lớn nhất = bất thường
         # nhất của bệnh nhân) | "random" (ablation: chọn K ngẫu nhiên/bệnh nhân để
@@ -120,13 +124,15 @@ class MultiOmicGATModule(nn.Module):
     def forward(self, batch: dict, graph: HeteroData):
         x_dict = {k: self.node_emb[k] for k in ["gene", "cpg", "mirna"]}
 
-        present = {k: v for k, v in graph.edge_index_dict.items() if v.shape[1] > 0}
-        for i in range(self.n_layers):
-            out = self.convs[i](x_dict, present)
-            x_dict = {
-                t: self.layer_norms[i][t](h + F.elu(self.dropout(out.get(t, h))))
-                for t, h in x_dict.items()
-            }
+        # Ablation use_gat=False: bỏ qua message passing → x_dict = node_emb thô.
+        if self.use_gat:
+            present = {k: v for k, v in graph.edge_index_dict.items() if v.shape[1] > 0}
+            for i in range(self.n_layers):
+                out = self.convs[i](x_dict, present)
+                x_dict = {
+                    t: self.layer_norms[i][t](h + F.elu(self.dropout(out.get(t, h))))
+                    for t, h in x_dict.items()
+                }
 
         # ── Gene: single summary vector (B, H) used as Query (Phase 2.1a baseline) ──
         z_gene = self.gene_norm(

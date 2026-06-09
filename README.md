@@ -24,7 +24,7 @@
 
 ### 1.2 Sản phẩm đề xuất
 
-1. **Kiến trúc tổng quát** áp dụng được cho nhiều bộ dữ liệu đa omics, không bị giới hạn loại ung thư hay số subtype cụ thể (đã thử nghiệm trên 4 dataset TCGA: GI/BRCA/UCEC/KIPAN).
+1. **Kiến trúc tổng quát** áp dụng được cho nhiều bộ dữ liệu đa omics, không bị giới hạn loại ung thư hay số subtype cụ thể (scope hiện tại: GI/BRCA/STAD, mỗi bộ 5 + 4 lớp; UCEC/KIPAN làm sau).
 2. **Đồ thị dị thể đa omics** tích hợp **8 loại quan hệ sinh học** từ 7 cơ sở dữ liệu chuẩn (emQTL, STRING PPI, Reactome, miRTarBase, TargetScan miR family, Illumina 450K CpG island, co-regulation suy diễn).
 3. **Cross-Attention bất đối xứng**: gene đóng vai trò *Query*, CpG/miRNA đóng vai trò *Key/Value* — phản ánh đúng *central dogma* (methylation/miRNA điều khiển ngược lên biểu hiện gene).
 4. **Source code module hoá**, dễ mở rộng sang dataset mới (chỉ cần thêm 1 file `config_*.yaml` và file `clean_labels_*.csv`).
@@ -43,7 +43,7 @@
 | Số tham số          | ~12.6M                                                             | **~830K (1/15)** — lightweight                                             |
 | Loss                | Focal (γ=2, α=1)                                                   | Focal **per-class α từ class frequency** + label smoothing + Frobenius reg |
 | Đánh giá            | Single 90/10 split (COAD+READ+STAD train, ESCA test)               | **5-fold Stratified CV × 3 seeds = 15 runs**                               |
-| Dataset             | GI + BRCA                                                          | GI + BRCA + UCEC + KIPAN (mở rộng 2 dataset)                               |
+| Dataset             | GI + BRCA                                                          | GI + BRCA + STAD (mỗi bộ 5 + 4 lớp)                                        |
 
 ---
 
@@ -443,50 +443,56 @@ python run_multi_seed.py --config configs/config_kipan.yaml    # KIPAN
 python train.py --config configs/config.yaml --seed 42
 ```
 
-`run_multi_seed.py` parse stdout từng seed, aggregate mean ± std, in **block markdown sẵn sàng paste vào [docs/RESULTS.md](docs/RESULTS.md)**.
+`run_multi_seed.py` parse stdout từng seed, aggregate mean ± std, in **block markdown sẵn sàng paste vào [docs/runs/](docs/runs/)**.
 
 ---
 
 ## 7. Kết quả thực nghiệm
 
-> **Đánh giá apples-to-apples**: MoXGATE đã được **re-run** với cùng `StratifiedKFold(5)` và cùng 3 seeds để so sánh công bằng (paper gốc dùng single 90/10 split). Số liệu authoritative: [docs/RESULTS.md](docs/RESULTS.md).
+> **Đánh giá apples-to-apples**: CẢ GIAC và MoXGATE đều chạy **cùng protocol — 5-fold Stratified CV × 3 seeds (42/123/2024) = 15 runs**, cùng data, đủ số lớp. MoXGATE dùng `train_kfold.py` (bản dựng lại). Số raw: [docs/runs/testnew.md](docs/runs/testnew.md) (MoXGATE) + [docs/runs/2026-06-08_valf1_protocol_4run_comparison.md](docs/runs/2026-06-08_valf1_protocol_4run_comparison.md) (GIAC GI).
+>
+> **Scope hiện tại: GI (5+4 lớp), STAD (5+4 lớp), BRCA (5 lớp).** UCEC/KIPAN tạm bỏ khỏi scope (làm sau nếu còn thời gian).
+>
+> ⚠️ **Lưu ý trung thực:** MoXGATE ở đây là **bản tự dựng lại** (paper không công bố code) → có thể yếu hơn bản gốc. Vì vậy **KHÔNG kết luận "GIAC thắng MoXGATE"**. Ý nghĩa bảng dưới: dưới **cùng điều kiện kiểm soát (cùng data, cùng 15-run CV)**, cấu trúc sinh học của GIAC **không làm giảm** hiệu năng — còn nhỉnh hơn ở GI/STAD — ĐỒNG THỜI thêm được interpretability per-bệnh-nhân + nhẹ 15×.
 
-### 7.1 So sánh GIAC vs MoXGATE (Macro F1, 3 seeds × 5 folds = 15 runs)
+### 7.1 Macro F1 — primary (15 runs, mean ± std)
 
-| Dataset                  | n   | # subtypes                      | **GIAC macro F1**  | MoXGATE 5-fold macro F1 | Δ            | Verdict      |
-| ------------------------ | --- | ------------------------------- | ------------------ | ----------------------- | ------------ | ------------ |
-| GI (COAD+ESCA+READ+STAD) | 917 | 5 (CIN/GS/MSI/HM-SNV/EBV)       | 0.6626 ± 0.035     | 0.7132 ± 0.063          | −0.051       | MoXGATE      |
-| BRCA                     | 965 | 5 (Basal/Her2/LumA/LumB/Normal) | 0.8077 ± 0.009     | 0.8184 ± 0.029          | −0.011       | gần tie      |
-| **UCEC**                 | 499 | 4 (CN_high/CN_low/MSI/POLE)     | **0.7447 ± 0.009** | 0.7193 ± 0.041          | **+0.025** ✓ | **GIAC win** |
-| KIPAN                    | 685 | 3 (KICH/KIRC/KIRP)              | 0.8918 ± 0.008     | 0.9526 ± 0.017          | −0.061       | MoXGATE      |
+| Dataset      | **GIAC**           | MoXGATE        | Δ          | Verdict |
+| ------------ | ------------------ | -------------- | ---------- | ------- |
+| GI 5-class   | **0.7088 ± 0.048** | 0.6637 ± 0.050 | **+0.045** | GIAC nhỉnh |
+| GI 4-class   | **0.8541 ± 0.020** | 0.8292 ± 0.040 | **+0.025** | GIAC nhỉnh |
+| STAD 5-class | **0.6493 ± 0.049** | 0.6362 ± 0.057 | **+0.013** | GIAC nhỉnh |
+| STAD 4-class | **0.8316 ± 0.057** | 0.7985 ± 0.084 | **+0.033** | GIAC nhỉnh |
+| BRCA 5-class | **0.8064 ± 0.039** | 0.8044 ± 0.038 | +0.002     | ≈ tie   |
 
-### 7.2 Weighted F1 (đối chiếu paper MoXGATE)
+→ GIAC **ngang-hoặc-nhỉnh hơn** MoXGATE (bản tái hiện) trên cả 5 cấu hình: chênh +0.013→+0.045 macro ở GI/STAD, **hoà BRCA** (+0.002). Không kết luận "thắng" (xem lưu ý trên). Lớp hiếm HM-SNV (GI n=19, STAD n=7 → F1≈0, data-bound) kéo macro 5-class xuống — bản **4-class** có ý nghĩa nhất.
 
-| Dataset  | GIAC               | MoXGATE        | Δ            |
-| -------- | ------------------ | -------------- | ------------ |
-| GI       | 0.8226 ± 0.022     | 0.8626 ± 0.020 | −0.040       |
-| BRCA     | 0.8690 ± 0.011     | 0.8717 ± 0.021 | −0.003 (tie) |
-| **UCEC** | **0.7919 ± 0.006** | 0.7765 ± 0.027 | +0.015 ✓     |
-| KIPAN    | 0.9160 ± 0.008     | 0.9593 ± 0.013 | −0.043       |
+### 7.2 Weighted F1 & Accuracy (15 runs, mean ± std)
 
-### 7.3 Phát hiện quan trọng — GIAC ổn định hơn MoXGATE 2-5 lần
+| Dataset      | GIAC Wt F1         | MoXGATE Wt F1  | GIAC Acc           | MoXGATE Acc    |
+| ------------ | ------------------ | -------------- | ------------------ | -------------- |
+| GI 5-class   | **0.8614 ± 0.017** | 0.8434 ± 0.032 | 0.8568 ± 0.020     | 0.8568 ± 0.027 |
+| GI 4-class   | **0.8885 ± 0.023** | 0.8733 ± 0.030 | **0.8841 ± 0.027** | 0.8797 ± 0.026 |
+| STAD 5-class | **0.8297 ± 0.043** | 0.8034 ± 0.060 | **0.8386 ± 0.038** | 0.8219 ± 0.050 |
+| STAD 4-class | **0.8587 ± 0.044** | 0.8276 ± 0.064 | **0.8588 ± 0.043** | 0.8399 ± 0.047 |
+| BRCA 5-class | **0.8638 ± 0.029** | 0.8588 ± 0.024 | **0.8618 ± 0.031** | 0.8601 ± 0.024 |
 
-| Dataset | GIAC std | MoXGATE std | Ratio           |
-| ------- | -------- | ----------- | --------------- |
-| GI      | 0.035    | 0.063       | **1.8×** stable |
-| BRCA    | 0.009    | 0.029       | **3.2×** stable |
-| UCEC    | 0.009    | 0.041       | **4.6×** stable |
-| KIPAN   | 0.008    | 0.017       | **2.1×** stable |
+→ GIAC nhỉnh hơn Weighted F1 cả 5; nhỉnh Accuracy 4/5, hoà GI 5-class.
 
-→ Đây là điểm mạnh có thể nhấn mạnh: **lightweight + parameter efficient + training stability** — phù hợp triển khai lâm sàng (kết quả dự đoán được, ít phụ thuộc seed).
+### 7.3 Độ ổn định (std) — báo cáo trung thực
 
-### 7.4 Quan sát interpretability
+GIAC có std hẹp hơn (ổn định hơn) ở **GI và STAD** trên cả Macro/Weighted F1 — nổi nhất GI 4-class macro (0.020 vs 0.040 ≈ **2× chặt**). **Ngoại lệ BRCA**: std GIAC ngang hoặc hơi rộng hơn MoXGATE (wt 0.029 vs 0.024) → với BRCA chỉ kết luận **"ngang"**, KHÔNG claim ổn định hơn. *(Con số "2–5× stable" ở bản cũ tính cả UCEC/KIPAN + sai metric — đã loại.)*
 
-Cross-attention `modality_weights` (học được) cho thấy **CpG luôn chiếm tỷ trọng cao hơn miRNA**:
+### 7.4 Tái hiện MoXGATE theo protocol paper (ESCA fixed-test) — chỉ để validate
+
+Chạy lại MoXGATE đúng split paper (train COAD+READ+STAD, test = ESCA cố định, 5 seeds): **Weighted F1 = 0.927 ± 0.005, Accuracy = 0.939 ± 0.010** — khớp con số ~0.94 paper công bố → xác nhận bản dựng lại MoXGATE đúng. **Macro F1 = 0.442** (thấp vì test ESCA chỉ còn 4 lớp, ~94% là CIN → gần baseline đoán-lớp-đa-số). ⚠️ Protocol này **KHÔNG** dùng để so hơn-thua với GIAC (khác test set, khác số lớp) — chỉ để chứng minh reproduction.
+
+### 7.5 Quan sát interpretability
+
+Cross-attention `modality_weights` (học được) cho thấy **CpG chiếm tỷ trọng cao hơn miRNA**:
 - BRCA: cpg ≈ 0.60–0.63, mirna ≈ 0.37–0.40
-- KIPAN: cpg ≈ 0.57–0.62, mirna ≈ 0.38–0.43
 
-Phù hợp sinh học: DNA methylation là **hallmark** quan trọng trong phân loại phân tử ung thư vú (BRCA) và thận (KIPAN). `nnz` của entmax15 ~0.3-0.5 → mỗi bệnh nhân chỉ "chú ý" 10-15 trong 32 token CpG/miRNA — sparse và có thể giải thích.
+Phù hợp sinh học: DNA methylation là **hallmark** quan trọng trong phân loại phân tử ung thư vú (BRCA). `nnz` của entmax15 ~0.3-0.5 → mỗi bệnh nhân chỉ "chú ý" 10-15 trong 32 token CpG/miRNA — sparse và có thể giải thích.
 
 ---
 
