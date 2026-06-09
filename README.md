@@ -533,14 +533,8 @@ giac_project_kaggle/
 │   └── final_process_omics.py      align + filter
 │
 └── docs/
-    ├── PIVOT_PLAN.md               strategy chính (FROZEN + audit + LGG)
-    ├── MODEL_ARCHITECTURE.md       chi tiết module (slide-friendly)
-    ├── RESULTS.md                  single source of truth — multi-seed log
-    └── issues/
-        ├── README.md
-        ├── 09-model-audit.md       (model audit checklist)
-        ├── 10-stad-evaluation.md
-        └── 11-lgg-mofnet-comparison.md
+    ├── ARCHITECTURE.md             1 file tổng: kiến trúc + đồ thị + train + kết quả + Q&A
+    └── runs/                       log thí nghiệm + baseline_MoXGATE.md + testnew.md (scratch)
 ```
 
 ---
@@ -699,8 +693,6 @@ logging:
 
 | File                                                     | Nội dung                                                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [docs/PIVOT_PLAN.md](docs/PIVOT_PLAN.md)                 | Strategy chính: FROZEN architecture sau khi nộp PGNV; lộ trình audit + data expansion + LGG. |
-| [docs/MODEL_ARCHITECTURE.md](docs/MODEL_ARCHITECTURE.md) | Chi tiết module + công thức + dimension annotation (slide-friendly).                         |
-| [docs/RESULTS.md](docs/RESULTS.md)                       | Single source of truth — paste output từ `run_multi_seed.py` ở đây.                          |
-| [docs/issues/](docs/issues/)                             | Issue tracker: 09 (model audit), 10 (STAD-only), 11 (LGG vs MOFNet).                         |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)            | **File tổng** — kiến trúc hiện tại + cách dựng đồ thị + train/eval + bảng kết quả baseline + Q&A phản biện. |
+| [docs/runs/](docs/runs/)                                | Log thí nghiệm (15-run comparison) + `baseline_MoXGATE.md`.                                  |
 | [CLAUDE.md](CLAUDE.md)                                   | Quy ước project + assistant guidelines.                                                      |

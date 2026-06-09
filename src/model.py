@@ -111,6 +111,7 @@ class GIACModel(nn.Module):
             film_per_channel     = cfg_model.get("film_per_channel", False),
             use_modality_summary = cfg_model.get("modality_summary", False),
             summary_condition_topk = cfg_model.get("summary_condition_topk", False),
+            topk_selection       = cfg_model.get("topk_selection", "zscore"),
         )
         self.cross_attn = ModalityCrossAttention(
             hidden_dim = H,

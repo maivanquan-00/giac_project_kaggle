@@ -1,10 +1,6 @@
-# GIAC GI 5-class - relaxed 3-relation graph + TopK32 (v1 control).
-# Purpose: isolate whether the relaxed graph itself improves over the old
-# minimal graph, without changing patient Top-K from 32 to 48.
-#
-# Compare against:
-#   - configs/config_minimal_graph.yaml              : old strict graph + TopK32
-#   - configs/config_minimal_graph_relaxed_topk48.yaml: relaxed graph + TopK48
+# GIAC GI 5-class — BASELINE chính thức: relaxed 3-relation graph + TopK32, val_f1.
+# 3 quan hệ (emQTL/miRTarBase/PPI), max_edges 12 / ppi 800 / max_targets 50.
+# Chi tiết + bảng kết quả: docs/ARCHITECTURE.md. config.yaml = full-graph (ablation).
 
 data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final"

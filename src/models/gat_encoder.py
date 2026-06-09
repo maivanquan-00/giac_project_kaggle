@@ -39,12 +39,17 @@ class MultiOmicGATModule(nn.Module):
                  n_layers: int, dropout: float, topk_seq: int = 32,
                  film_per_channel: bool = False,
                  use_modality_summary: bool = False,
-                 summary_condition_topk: bool = False):
+                 summary_condition_topk: bool = False,
+                 topk_selection: str = "zscore"):
         super().__init__()
         assert hidden_dim % n_heads == 0
         self.n_layers  = n_layers
         self.hidden_dim = hidden_dim
         self.topk_seq  = topk_seq  # K tokens per modality for cross-attention
+        # Tiêu chí chọn K token: "zscore" (mặc định, |value| lớn nhất = bất thường
+        # nhất của bệnh nhân) | "random" (ablation: chọn K ngẫu nhiên/bệnh nhân để
+        # kiểm chứng tiêu chí |z-score| có mang tín hiệu hay không).
+        self.topk_selection = topk_selection
         # 2 cải tiến opt-in (default False = behavior v1 gốc):
         #   film_per_channel: γ/β FiLM thành vector (H,) thay scalar → điều biến
         #     từng channel theo value bệnh nhân (#2).
@@ -171,7 +176,13 @@ class MultiOmicGATModule(nn.Module):
         B, n_feat = X.shape
         K = min(K, n_feat)
 
-        topk_idx = X.abs().topk(K, dim=1).indices       # (B, K)
+        if self.topk_selection == "random":
+            # Ablation: chọn K feature NGẪU NHIÊN/bệnh nhân (không theo |z-score|).
+            # rand + topk = K chỉ số phân biệt ngẫu nhiên mỗi hàng.
+            scores   = torch.rand(B, n_feat, device=X.device)
+            topk_idx = scores.topk(K, dim=1).indices     # (B, K) ngẫu nhiên
+        else:                                            # "zscore" (mặc định)
+            topk_idx = X.abs().topk(K, dim=1).indices    # (B, K) bất thường nhất
         E_topk   = E[topk_idx]                          # (B, K, H)
 
         weights = X.gather(1, topk_idx).unsqueeze(-1)   # (B, K, 1)

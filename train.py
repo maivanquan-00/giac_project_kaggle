@@ -55,6 +55,12 @@ def parse_args():
     parser.add_argument("--gene-top-k", type=int, default=None, help="Override preprocessing.gene_top_k (sweep K).")
     parser.add_argument("--meth-top-k", type=int, default=None, help="Override preprocessing.meth_top_k (sweep K).")
     parser.add_argument("--mirna-top-k", type=int, default=None, help="Override preprocessing.mirna_top_k (sweep K).")
+    parser.add_argument("--topk-seq", type=int, default=None,
+                        help="Override model.topk_seq (sweep số token CpG/miRNA: 16/32/48/64...).")
+    parser.add_argument("--topk-selection", choices=["zscore", "random"], default=None,
+                        help="Tiêu chí chọn top-K: zscore (mặc định) | random (ablation).")
+    parser.add_argument("--epochs", type=int, default=None,
+                        help="Override training.epochs (giảm để chạy nhanh khi ablation).")
     return parser.parse_args()
 
 
@@ -608,6 +614,15 @@ def main():
         cfg["preprocessing"]["meth_top_k"] = args.meth_top_k
     if args.mirna_top_k is not None:
         cfg["preprocessing"]["mirna_top_k"] = args.mirna_top_k
+    if args.topk_seq is not None:
+        cfg["model"]["topk_seq"] = args.topk_seq
+    if args.topk_selection is not None:
+        cfg["model"]["topk_selection"] = args.topk_selection
+    if args.epochs is not None:
+        cfg["training"]["epochs"] = args.epochs
+        # min_epochs không được vượt epochs (tránh không bao giờ early-stop được)
+        if cfg["training"].get("min_epochs", 0) > args.epochs:
+            cfg["training"]["min_epochs"] = max(1, args.epochs // 2)
 
     seed = cfg["training"]["seed"]
     set_seed(seed)
