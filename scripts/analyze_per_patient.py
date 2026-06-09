@@ -45,6 +45,9 @@ def parse_args():
     p.add_argument("--ckpt-dir", required=True,
                    help="Thư mục chứa best_model_fold_1.pt ... (save_dir lúc train).")
     p.add_argument("--cv-folds", type=int, default=5)
+    p.add_argument("--fold", type=int, default=None,
+                   help="Chỉ phân tích 1 fold (1..cv_folds) — bộ feature thống nhất, "
+                        "sạch cho phân tích subtype-marker. Mặc định: gộp tất cả fold.")
     p.add_argument("--seed", type=int, default=None,
                    help="Mặc định lấy từ config trong checkpoint (phải khớp lúc train).")
     p.add_argument("--out-dir", type=str, default=None)
@@ -248,6 +251,9 @@ def main():
         print("  ⚠️  topk_selection=random → mapping feature KHÔNG đáng tin (chọn ngẫu nhiên mỗi forward).")
 
     folds = build_cv_datasets(cfg, seed, n_splits=args.cv_folds)
+    if args.fold is not None:
+        folds = [fp for fp in folds if fp["fold"] == args.fold]
+        print(f"  Chỉ phân tích fold {args.fold} (bộ feature thống nhất).")
     all_rows = []
     for fp in folds:
         path = _ckpt_path(args.ckpt_dir, fp["fold"])
