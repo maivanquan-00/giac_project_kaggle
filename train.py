@@ -69,6 +69,8 @@ def parse_args():
                         help="Ablation: tắt rank positional encoding của top-K.")
     parser.add_argument("--gat-init-residual", type=float, default=None,
                         help="GCNII initial residual α (0=off, ~0.1-0.3 chống over-smoothing).")
+    parser.add_argument("--gat-layers", type=int, default=None,
+                        help="Override model.gat_layers (số lớp GAT: 1 = ít smooth hơn).")
     return parser.parse_args()
 
 
@@ -639,6 +641,8 @@ def main():
         cfg["model"]["use_pos_emb"] = False
     if args.gat_init_residual is not None:
         cfg["model"]["gat_init_residual"] = args.gat_init_residual
+    if args.gat_layers is not None:
+        cfg["model"]["gat_layers"] = args.gat_layers
 
     seed = cfg["training"]["seed"]
     set_seed(seed)

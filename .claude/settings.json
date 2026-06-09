@@ -70,7 +70,8 @@
       "PowerShell(python -m py_compile train.py src/data/graph_builder.py src/model.py src/models/gat_encoder.py)",
       "PowerShell(if \\($?\\) { \"all compiled OK\" })",
       "Bash(awk 'NR>1037' docs/runs/testnew.md)",
-      "Bash(python -m py_compile src/models/gat_encoder.py src/model.py train.py)"
+      "Bash(python -m py_compile src/models/gat_encoder.py src/model.py train.py)",
+      "Bash(python -m py_compile train.py)"
     ],
     "additionalDirectories": [
       "d:\\DATN\\giac_project_kaggle"
