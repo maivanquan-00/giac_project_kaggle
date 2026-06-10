@@ -43,7 +43,6 @@ model:
   gat_layers:  2
   gat_dropout: 0.3
   topk_seq:    32
-  use_film:    false   # value-modulated embedding z=E+E·value (bỏ FiLM γ/β: γ≈0.88,β≈0 → gần inert)
   ca_heads:    4
   ca_dropout:  0.4
   sparsemax_alpha: 1.5
