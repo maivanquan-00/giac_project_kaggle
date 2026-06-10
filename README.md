@@ -434,13 +434,13 @@ $$
 
 ```bash
 # 1 dataset, 3 seeds × 5 folds
-python run_multi_seed.py --config configs/config.yaml          # GI
+python run_multi_seed.py --config configs/config_minimal_graph_relaxed_topk32.yaml          # GI
 python run_multi_seed.py --config configs/config_brca.yaml     # BRCA
 python run_multi_seed.py --config configs/config_ucec.yaml     # UCEC
 python run_multi_seed.py --config configs/config_kipan.yaml    # KIPAN
 
 # Single-seed debug
-python train.py --config configs/config.yaml --seed 42
+python train.py --config configs/config_minimal_graph_relaxed_topk32.yaml --seed 42
 ```
 
 `run_multi_seed.py` parse stdout từng seed, aggregate mean ± std, in **block markdown sẵn sàng paste vào [docs/runs/](docs/runs/)**.
@@ -510,7 +510,7 @@ giac_project_kaggle/
 ├── run_multi_seed.py               ← wrapper 3 seeds, aggregate mean ± std
 │
 ├── configs/                        ← 1 YAML per dataset
-│   ├── config.yaml                 (GI: COAD+ESCA+READ+STAD)
+│   ├── config_minimal_graph_relaxed_topk32.yaml  (GI: BASELINE 8-relation)
 │   ├── config_brca.yaml
 │   ├── config_ucec.yaml
 │   ├── config_kipan.yaml
@@ -575,13 +575,13 @@ python preprocessed_data/main_preprocess_omics.py --base /path/to/data_root \
 
 ```bash
 # Multi-seed (recommended, 3 × 5 = 15 runs)
-python run_multi_seed.py --config configs/config.yaml          # GI
+python run_multi_seed.py --config configs/config_minimal_graph_relaxed_topk32.yaml          # GI
 python run_multi_seed.py --config configs/config_brca.yaml     # BRCA
 python run_multi_seed.py --config configs/config_ucec.yaml     # UCEC
 python run_multi_seed.py --config configs/config_kipan.yaml    # KIPAN
 
 # Single-seed (debug)
-python train.py --config configs/config.yaml --seed 42
+python train.py --config configs/config_minimal_graph_relaxed_topk32.yaml --seed 42
 ```
 
 ### 9.4 Cấu trúc 1 file config

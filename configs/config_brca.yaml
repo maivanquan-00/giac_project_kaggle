@@ -2,7 +2,6 @@ data:
   data_dir:  "/kaggle/input/datasets/maivanquan/datn-2025-2/data_final_brca"
   graph_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph"
   emqtl_dir: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/BRCA_extend"
-  manifest_file: "/kaggle/input/datasets/maivanquan/datn-2025-2/Heterogeneous_Graph/humanmethylation450_15017482_v1-2.csv"
   cancer_types: ["BRCA"]
 
 preprocessing:
@@ -20,18 +19,11 @@ preprocessing:
 graph:    # relaxed 3-relation (đồng bộ GI baseline)
   emqtl_pval_threshold:    0.05
   max_edges_per_node:      12
-  max_coregulation_edges:  10
   ppi_score_threshold:     800
   max_targets_per_mirna:   50
   use_emqtl:        true
   use_mirna:        true
   use_ppi:          true
-  use_reactome:     false
-  use_mirna_family: false
-  use_coregulation: false
-  use_cpg_island:   false
-  reactome_max_pathway_size: 50
-  cpg_island_relation: "Island"
 
 model:
   hidden_dim:  96                # BRCA sweet spot (128 caused overfit, gap 0.03→0.07)

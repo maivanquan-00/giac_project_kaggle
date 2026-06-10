@@ -57,6 +57,8 @@ def parse_args():
     parser.add_argument("--mirna-top-k", type=int, default=None, help="Override preprocessing.mirna_top_k (sweep K).")
     parser.add_argument("--topk-seq", type=int, default=None,
                         help="Override model.topk_seq (sweep số token CpG/miRNA: 16/32/48/64...).")
+    parser.add_argument("--hidden-dim", type=int, default=None,
+                        help="Override model.hidden_dim (sweep: 64/96/128/192/256). Phải chia hết cho gat_heads & ca_heads.")
     parser.add_argument("--topk-selection", choices=["zscore", "random"], default=None,
                         help="Tiêu chí chọn top-K: zscore (mặc định) | random (ablation).")
     parser.add_argument("--epochs", type=int, default=None,
@@ -626,6 +628,8 @@ def main():
         cfg["preprocessing"]["mirna_top_k"] = args.mirna_top_k
     if args.topk_seq is not None:
         cfg["model"]["topk_seq"] = args.topk_seq
+    if args.hidden_dim is not None:
+        cfg["model"]["hidden_dim"] = args.hidden_dim
     if args.topk_selection is not None:
         cfg["model"]["topk_selection"] = args.topk_selection
     if args.epochs is not None:

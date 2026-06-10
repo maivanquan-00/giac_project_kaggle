@@ -23,18 +23,13 @@ import torch
 from torch_geometric.data import HeteroData
 
 
-# 13 relations in fixed order. Use this list anywhere we need to enumerate them.
+# 8 relations in fixed order (3 file curated: emQTL + miRTarBase + PPI, + self-loops).
 RELATION_ORDER = [
     (("cpg",   "regulates",    "gene"),  "→", "emQTL"),
     (("gene",  "regulated_by", "cpg"),   "→", "emQTL reverse"),
     (("gene",  "ppi",          "gene"),  "↔", "STRING PPI"),
     (("mirna", "targets",      "gene"),  "→", "miRTarBase"),
     (("gene",  "targeted_by",  "mirna"), "→", "miRTarBase reverse"),
-    (("gene",  "copathway",    "gene"),  "↔", "Reactome"),
-    (("mirna", "samefamily",   "mirna"), "↔", "TargetScan family"),
-    (("cpg",   "coregulates",  "mirna"), "→", "co-reg, derived"),
-    (("mirna", "coregulates",  "cpg"),   "→", "reverse"),
-    (("cpg",   "sameisland",   "cpg"),   "↔", "Illumina manifest"),
     (("gene",  "self_loop",    "gene"),  "↔", "identity"),
     (("cpg",   "self_loop",    "cpg"),   "↔", "identity"),
     (("mirna", "self_loop",    "mirna"), "↔", "identity"),
@@ -42,13 +37,13 @@ RELATION_ORDER = [
 
 
 def _print_relation_summary(graph) -> None:
-    """Numbered table of all 13 declared relations with edge counts + max node degree.
+    """Numbered table of all 8 declared relations with edge counts + max node degree.
 
     Cột `max deg` = degree lớn nhất của 1 node trong quan hệ đó (max của in/out).
     Dùng để phát hiện "hub nổ degree" khi bỏ cap — degree càng to → đồ thị càng nặng
     và càng dễ over-smoothing trong GAT.
     """
-    print("\n📋 Graph relations (13 declared):")
+    print("\n📋 Graph relations (8 declared):")
     total = 0
     n_active = 0
     max_deg_global = 0
@@ -67,7 +62,7 @@ def _print_relation_summary(graph) -> None:
         if n_edges > 0:
             n_active += 1
     print(f"   {'─' * 74}")
-    print(f"   Total: {n_active}/13 active, {total:,} edges  |  max node degree = {max_deg_global:,}")
+    print(f"   Total: {n_active}/8 active, {total:,} edges  |  max node degree = {max_deg_global:,}")
     _print_degree_distribution(graph)
 
 
@@ -159,55 +154,7 @@ def build_hetero_graph(
             graph["mirna", "targets", "gene"].edge_index    = mirna_edges
             graph["gene", "targeted_by", "mirna"].edge_index = mirna_edges.flip(0)
 
-    # ── 6: Gene ↔ Gene  (Reactome co-pathway) ─────────────────────────
-    if cfg_graph.get("use_reactome", True):
-        reactome_edges = _load_reactome_edges(
-            reactome_file    = os.path.join(graph_dir, "Ensembl2Reactome_All_Levels.txt"),
-            hgnc_file        = os.path.join(graph_dir, "hgnc_complete_set.txt"),
-            gene_idx         = gene_idx,
-            max_pathway_size = cfg_graph.get("reactome_max_pathway_size", 50),
-            max_edges        = cfg_graph.get("max_edges_per_node", 20),
-        )
-        if reactome_edges is not None:
-            graph["gene", "copathway", "gene"].edge_index = reactome_edges
-
-    # ── 7: miRNA ↔ miRNA  (TargetScan family) ─────────────────────────
-    if cfg_graph.get("use_mirna_family", True):
-        family_edges = _load_mirna_family_edges(
-            family_file = os.path.join(graph_dir, "miR_Family_Info.txt"),
-            mirna_idx   = mirna_idx,
-        )
-        if family_edges is not None:
-            graph["mirna", "samefamily", "mirna"].edge_index = family_edges
-
-    # ── 8+9: CpG ↔ miRNA  (co-regulation, derived) ────────────────────
-    if (cfg_graph.get("use_coregulation", True)
-            and cpg_gene_edges is not None and mirna_edges is not None):
-        cpg_mirna_edges, mirna_cpg_edges = _build_coregulation_edges(
-            cpg_gene_edges     = cpg_gene_edges,
-            mirna_gene_edges   = mirna_edges,
-            n_cpg              = len(cpg_names),
-            n_mirna            = len(mirna_names),
-            max_edges_per_node = cfg_graph.get("max_coregulation_edges", 20),
-        )
-        if cpg_mirna_edges is not None:
-            graph["cpg",   "coregulates", "mirna"].edge_index = cpg_mirna_edges
-            graph["mirna", "coregulates", "cpg"].edge_index   = mirna_cpg_edges
-
-    # ── 10: CpG ↔ CpG  (Illumina CpG island) ──────────────────────────
-    if cfg_graph.get("use_cpg_island", False):
-        manifest_file = cfg_data.get("manifest_file", "")
-        if manifest_file:
-            island_edges = _load_cpg_island_edges(
-                manifest_file      = manifest_file,
-                cpg_idx            = cpg_idx,
-                relation_filter    = cfg_graph.get("cpg_island_relation", "Island"),
-                max_edges_per_node = cfg_graph.get("max_edges_per_node", 20),
-            )
-            if island_edges is not None:
-                graph["cpg", "sameisland", "cpg"].edge_index = island_edges
-
-    # ── 11-13: self-loops ─────────────────────────────────────────────
+    # ── self-loops ────────────────────────────────────────────────────
     for nt, count in [("gene", len(gene_names)), ("cpg", len(cpg_names)), ("mirna", len(mirna_names))]:
         graph[nt, "self_loop", nt].edge_index = _identity_edges(count)
 
@@ -449,74 +396,6 @@ def _load_mirna_edges(
 # ─────────────────────────────────────────────
  
  
-# ─────────────────────────────────────────────
-#  Co-regulation edges: CpG ↔ miRNA
-#  Nếu CpG_i và miRNA_j cùng regulate Gene_k
-#  → thêm cạnh CpG_i → miRNA_j và ngược lại
-#  Tạo vòng khép kín: CpG → Gene → miRNA → Gene → CpG
-# ─────────────────────────────────────────────
-def _build_coregulation_edges(
-    cpg_gene_edges: torch.Tensor,    # (2, E1): src=cpg_idx, dst=gene_idx
-    mirna_gene_edges: torch.Tensor,  # (2, E2): src=mirna_idx, dst=gene_idx
-    n_cpg: int,
-    n_mirna: int,
-    max_edges_per_node: int = 20,    # giới hạn để tránh đồ thị quá dày
-) -> tuple:
-    """
-    Tìm các cặp (CpG, miRNA) cùng regulate ít nhất 1 gene chung.
-    Trả về (cpg_mirna_edges, mirna_cpg_edges) dạng (2, E).
-    """
-
-    # Build dict: gene_idx → set of cpg_idx
-    gene_to_cpg = {}
-    for i in range(cpg_gene_edges.shape[1]):
-        c_i = cpg_gene_edges[0, i].item()
-        g_i = cpg_gene_edges[1, i].item()
-        gene_to_cpg.setdefault(g_i, set()).add(c_i)
- 
-    # Build dict: gene_idx → set of mirna_idx
-    gene_to_mirna = {}
-    for i in range(mirna_gene_edges.shape[1]):
-        m_i = mirna_gene_edges[0, i].item()
-        g_i = mirna_gene_edges[1, i].item()
-        gene_to_mirna.setdefault(g_i, set()).add(m_i)
- 
-    # Tìm shared genes → tạo CpG↔miRNA edges
-    cpg_mirna_src, cpg_mirna_dst = [], []
-    mirna_cpg_src, mirna_cpg_dst = [], []
-    cpg_edge_count   = {}
-    mirna_edge_count = {}
-    seen = set()
- 
-    for g_i, cpg_set in gene_to_cpg.items():
-        mirna_set = gene_to_mirna.get(g_i, set())
-        if not mirna_set:
-            continue
-        for c_i in cpg_set:
-            if max_edges_per_node is not None and cpg_edge_count.get(c_i, 0) >= max_edges_per_node:
-                continue                               # None → không giới hạn degree
-            for m_i in mirna_set:
-                if max_edges_per_node is not None and mirna_edge_count.get(m_i, 0) >= max_edges_per_node:
-                    continue
-                key = (c_i, m_i)
-                if key in seen:
-                    continue
-                seen.add(key)
-                cpg_mirna_src.append(c_i)
-                cpg_mirna_dst.append(m_i)
-                mirna_cpg_src.append(m_i)
-                mirna_cpg_dst.append(c_i)
-                cpg_edge_count[c_i]   = cpg_edge_count.get(c_i, 0) + 1
-                mirna_edge_count[m_i] = mirna_edge_count.get(m_i, 0) + 1
-
-    if not cpg_mirna_src:
-        return None, None
- 
-    cpg_mirna = torch.tensor([cpg_mirna_src, cpg_mirna_dst], dtype=torch.long)
-    mirna_cpg = torch.tensor([mirna_cpg_src, mirna_cpg_dst], dtype=torch.long)
-    return cpg_mirna, mirna_cpg
- 
- 
 def _find_col(columns: list, candidates: list) -> str | None:
     col_lower = [c.lower() for c in columns]
     for cand in candidates:
@@ -529,259 +408,3 @@ def _find_col(columns: list, candidates: list) -> str | None:
 def _identity_edges(n_nodes: int) -> torch.Tensor:
     idx = torch.arange(n_nodes, dtype=torch.long)
     return torch.stack([idx, idx], dim=0)
- 
-# ─────────────────────────────────────────────
-#  Reactome co-pathway  (Gene ↔ Gene)
-# ─────────────────────────────────────────────
- 
-def _load_reactome_edges(reactome_file, hgnc_file, gene_idx, max_pathway_size=50, max_edges=20):
-    if not os.path.isfile(reactome_file):
-        print("   ⚠️  Ensembl2Reactome_All_Levels.txt không tìm thấy")
-        return None
- 
-    # Ensembl → gene symbol map
-    ensembl_to_sym = {}
-    if os.path.isfile(hgnc_file):
-        try:
-            hgnc = pd.read_csv(hgnc_file, sep="\t", low_memory=False,
-                               usecols=["symbol", "ensembl_gene_id"])
-            hgnc = hgnc.dropna(subset=["symbol", "ensembl_gene_id"])
-            for _, row in hgnc.iterrows():
-                sym = str(row["symbol"]).strip().upper()
-                eid = str(row["ensembl_gene_id"]).strip()
-                if sym in gene_idx:
-                    ensembl_to_sym[eid] = sym
-        except Exception:
-            pass
- 
-    pathway_to_genes = {}
-    try:
-        for chunk in pd.read_csv(
-            reactome_file, sep="\t", header=None, chunksize=200_000,
-            names=["ensembl", "pathway_id", "url", "pathway_name", "evidence", "species"],
-            dtype=str,
-        ):
-            chunk = chunk[chunk["species"].str.strip() == "Homo sapiens"]
-            for row in chunk.itertuples(index=False, name=None):
-                sym = ensembl_to_sym.get(str(row[0]).strip(), "")
-                if not sym or sym not in gene_idx:
-                    continue
-                pathway_to_genes.setdefault(str(row[1]).strip(), set()).add(sym)
-    except Exception as e:
-        print(f"   ⚠️  Reactome parse error: {e}")
-        return None
- 
-    src_list, dst_list = [], []
-    seen = set()
-    edge_count = {}
- 
-    for pid, gset in pathway_to_genes.items():
-        if max_pathway_size is not None and len(gset) > max_pathway_size:
-            continue                                   # None → giữ mọi pathway (cẩn thận clique lớn)
-        glist = [gene_idx[g] for g in gset if g in gene_idx]
-        for a in range(len(glist)):
-            for b in range(a + 1, len(glist)):
-                i1, i2 = glist[a], glist[b]
-                if max_edges is not None and (edge_count.get(i1, 0) >= max_edges or edge_count.get(i2, 0) >= max_edges):
-                    continue                           # None → không giới hạn degree gene
-                key = (min(i1, i2), max(i1, i2))
-                if key in seen:
-                    continue
-                seen.add(key)
-                src_list += [i1, i2]; dst_list += [i2, i1]
-                edge_count[i1] = edge_count.get(i1, 0) + 1
-                edge_count[i2] = edge_count.get(i2, 0) + 1
- 
-    if not src_list:
-        return None
-    return torch.tensor([src_list, dst_list], dtype=torch.long)
- 
- 
-# ─────────────────────────────────────────────
-#  CpG island  (CpG ↔ CpG)
-# ─────────────────────────────────────────────
-
-def _load_cpg_island_edges(
-    manifest_file: str,
-    cpg_idx: dict,
-    relation_filter: str = "Island",   # "Island" | "Island+Shore" | "all"
-    max_edges_per_node: int = 20,
-) -> "torch.Tensor | None":
-    """
-    Đọc Illumina 450K manifest, tìm các CpG probe cùng UCSC CpG island,
-    thêm cạnh vô hướng giữa chúng.
-
-    relation_filter:
-        "Island"       — chỉ probes có Relation_to_UCSC_CpG_Island == "Island"
-        "Island+Shore" — Island + N_Shore + S_Shore
-        "all"          — mọi probe có UCSC_CpG_Islands_Name không rỗng
-    """
-    if not os.path.isfile(manifest_file):
-        print("   ⚠️  Illumina manifest không tìm thấy (hoặc là directory)")
-        return None
-
-    # File có header [Heading]/[Assay] — tìm dòng bắt đầu bằng "IlmnID"
-    skiprows = None
-    try:
-        with open(manifest_file, encoding="utf-8", errors="replace") as f:
-            for i, line in enumerate(f):
-                if line.startswith("IlmnID"):
-                    skiprows = i
-                    break
-    except Exception as e:
-        print(f"lỗi đọc file: {e}")
-        return None
-
-    if skiprows is None:
-        print("   ⚠️  Không tìm thấy header IlmnID trong manifest")
-        return None
-
-    try:
-        df = pd.read_csv(
-            manifest_file,
-            skiprows=skiprows,
-            usecols=["Name", "UCSC_CpG_Islands_Name", "Relation_to_UCSC_CpG_Island"],
-            dtype=str,
-            encoding="utf-8",
-            low_memory=False,
-        )
-    except Exception:
-        try:
-            df = pd.read_csv(
-                manifest_file,
-                skiprows=skiprows,
-                usecols=["Name", "UCSC_CpG_Islands_Name", "Relation_to_UCSC_CpG_Island"],
-                dtype=str,
-                encoding="latin-1",
-                low_memory=False,
-            )
-        except Exception as e:
-            print(f"lỗi parse CSV: {e}")
-            return None
-
-    # Lọc theo relation
-    valid_relations: set
-    if relation_filter == "Island":
-        valid_relations = {"Island"}
-    elif relation_filter == "Island+Shore":
-        valid_relations = {"Island", "N_Shore", "S_Shore"}
-    else:
-        valid_relations = None  # type: ignore
-
-    df = df.dropna(subset=["UCSC_CpG_Islands_Name", "Relation_to_UCSC_CpG_Island"])
-    df = df[df["UCSC_CpG_Islands_Name"].str.strip() != ""]
-    if valid_relations is not None:
-        df = df[df["Relation_to_UCSC_CpG_Island"].str.strip().isin(valid_relations)]
-
-    # Group by island → list probe indices (chỉ giữ probe có trong cpg_idx)
-    island_to_cpg: dict[str, list[int]] = {}
-    for _, row in df.iterrows():
-        probe = str(row["Name"]).strip()
-        island = str(row["UCSC_CpG_Islands_Name"]).strip()
-        if probe in cpg_idx:
-            island_to_cpg.setdefault(island, []).append(cpg_idx[probe])
-
-    # Build edges với cap per-node
-    src_list, dst_list = [], []
-    seen: set[tuple[int, int]] = set()
-    edge_count: dict[int, int] = {}
-
-    for island, indices in island_to_cpg.items():
-        unique = list(set(indices))
-        if len(unique) < 2:
-            continue
-        for a in range(len(unique)):
-            for b in range(a + 1, len(unique)):
-                i1, i2 = unique[a], unique[b]
-                if max_edges_per_node is not None and edge_count.get(i1, 0) >= max_edges_per_node:
-                    continue                           # None → không giới hạn degree
-                if max_edges_per_node is not None and edge_count.get(i2, 0) >= max_edges_per_node:
-                    continue
-                key = (min(i1, i2), max(i1, i2))
-                if key in seen:
-                    continue
-                seen.add(key)
-                src_list += [i1, i2]
-                dst_list += [i2, i1]
-                edge_count[i1] = edge_count.get(i1, 0) + 1
-                edge_count[i2] = edge_count.get(i2, 0) + 1
-
-    if not src_list:
-        return None
-    return torch.tensor([src_list, dst_list], dtype=torch.long)
-
-
-# ─────────────────────────────────────────────
-#  miRNA family  (miRNA ↔ miRNA)
-# ─────────────────────────────────────────────
- 
-def _load_mirna_family_edges(family_file, mirna_idx):
-    if not os.path.isfile(family_file):
-        print("   ⚠️  miR_Family_Info.txt không tìm thấy")
-        return None
- 
-    try:
-        df = pd.read_csv(family_file, sep="\t", dtype=str)
-    except Exception:
-        try:
-            df = pd.read_csv(family_file, sep="\t", dtype=str, encoding="latin-1")
-        except Exception as e:
-            print(f"   ⚠️  miR_Family_Info parse error: {e}")
-            return None
- 
-    family_col  = _find_col(df.columns.tolist(), ["miR Family", "miR_Family", "family"])
-    mirna_col   = _find_col(df.columns.tolist(), ["MiRBase ID", "miRBase_ID", "miRNA"])
-    species_col = _find_col(df.columns.tolist(), ["Species", "species", "Species ID"])
- 
-    if not family_col or not mirna_col:
-        print(f"   ⚠️  miR_Family_Info: không nhận ra cột {df.columns.tolist()[:5]}")
-        return None
- 
-    if species_col:
-        df = df[df[species_col].astype(str).str.contains("9606|sapiens", na=False)]
- 
-    def normalize_mature(name: str) -> str:
-        """
-        'hsa-miR-21-5p' → 'hsa-mir-21'
-        'hsa-miR-21-3p' → 'hsa-mir-21'
-        Only strips -5p / -3p suffix, nothing else.
-        """
-        name = name.strip().lower()
-        return re.sub(r'-[35]p$', '', name)
- 
-    # Build TCGA-normalised base -> list of indices (uses module-level _normalize_tcga_mirna)
-    tcga_base_to_idx = {}
-    for tcga_name, idx in mirna_idx.items():
-        base = _normalize_tcga_mirna(tcga_name)
-        tcga_base_to_idx.setdefault(base, []).append(idx)
- 
-    # Build family → list of mirna indices
-    family_to_indices = {}
-    for _, row in df[[family_col, mirna_col]].iterrows():
-        fam  = str(row[family_col]).strip()
-        base = normalize_mature(str(row[mirna_col]))
-        for idx in tcga_base_to_idx.get(base, []):
-            family_to_indices.setdefault(fam, []).append(idx)
- 
-    # Cap: skip families with > 20 members (likely normalization artifact)
-    MAX_FAMILY_SIZE = 20
- 
-    src_list, dst_list = [], []
-    seen = set()
- 
-    for fam, indices in family_to_indices.items():
-        unique = list(set(indices))
-        if len(unique) < 2 or len(unique) > MAX_FAMILY_SIZE:
-            continue
-        for a in range(len(unique)):
-            for b in range(a + 1, len(unique)):
-                i1, i2 = unique[a], unique[b]
-                key = (min(i1, i2), max(i1, i2))
-                if key in seen:
-                    continue
-                seen.add(key)
-                src_list += [i1, i2]; dst_list += [i2, i1]
-
-    if not src_list:
-        return None
-    return torch.tensor([src_list, dst_list], dtype=torch.long)

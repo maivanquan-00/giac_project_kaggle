@@ -72,7 +72,12 @@
       "Bash(awk 'NR>1037' docs/runs/testnew.md)",
       "Bash(python -m py_compile src/models/gat_encoder.py src/model.py train.py)",
       "Bash(python -m py_compile train.py)",
-      "Bash(python -m py_compile scripts/analyze_per_patient.py)"
+      "Bash(python -m py_compile scripts/analyze_per_patient.py)",
+      "Bash(python -m py_compile src/data/graph_builder.py)",
+      "Bash(sed -i '479,$d' src/data/graph_builder.py)",
+      "Bash(sed -i '399,466d' src/data/graph_builder.py)",
+      "Bash(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_minimal_graph_relaxed_topk32.yaml'\\)\\); print\\('YAML OK | graph flags:', [k for k in c['graph']]\\)\")",
+      "Bash(python -c \"import yaml; c=yaml.safe_load\\(open\\('configs/config_minimal_graph_relaxed_topk32.yaml', encoding='utf-8'\\)\\); print\\('YAML OK | graph keys:', list\\(c['graph'].keys\\(\\)\\)\\)\")"
     ],
     "additionalDirectories": [
       "d:\\DATN\\giac_project_kaggle"
