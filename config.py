@@ -22,7 +22,7 @@ import sys
 # ══════════════════════════════════════════════════════════════════
 
 # Đường dẫn trên máy LOCAL (Windows / Linux / Mac)
-LOCAL_BASE = r"d:\ĐATN\MoXGATE"
+LOCAL_BASE = r"d:\DATN\MoXGATE"
 
 # Tên thư mục trên Google Drive (Colab)
 # Nếu Drive của bạn có cấu trúc: /content/drive/MyDrive/<DRIVE_PROJECT_DIR>/

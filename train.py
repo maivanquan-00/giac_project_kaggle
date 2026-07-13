@@ -19,7 +19,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 import yaml
-from sklearn.metrics import f1_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import f1_score, precision_score
+from sklearn.svm import SVC
 
 from src.data.dataset import build_cv_datasets, build_datasets, build_fixed_cohort_test_datasets
 from src.data.graph_builder import build_hetero_graph, get_edge_stats
@@ -35,18 +38,9 @@ from src.utils import (
 _DEFAULT_subtype_names = ["CIN", "GS", "MSI", "HM-SNV", "EBV"]
 
 
-def build_model(dims, cfg_model, cfg_train):
-    """Chọn kiến trúc theo cfg_model['arch'] ('v1' mặc định | 'v2' patient-conditioned GAT)."""
-    arch = str(cfg_model.get("arch", "v1")).lower()
-    if arch == "v2":
-        from src.model_v2 import GIACModelV2
-        return GIACModelV2(dims, cfg_model, cfg_train)
-    return GIACModel(dims, cfg_model, cfg_train)
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/config.yaml")
+    parser.add_argument("--config", default="configs/config_minimal_graph_relaxed_topk32.yaml")
     parser.add_argument("--cv-folds", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None,
                         help="Override training.seed in config. Use cho multi-seed runs.")
@@ -176,6 +170,60 @@ def collect_attn_stats(model, loader, graph, device):
     }
 
 
+@torch.no_grad()
+def extract_fused_embeddings(model, loader, graph, device):
+    """Trích xuất z_fused (đầu vào của bộ phân loại) và nhãn thật cho mỗi batch.
+
+    Dùng để so sánh bộ phân loại MLP hiện tại với các thuật toán phân loại
+    kinh điển (Logistic Regression, SVM, Random Forest) trên CÙNG một biểu
+    diễn z_fused đã học — tách riêng câu hỏi "biểu diễn có tốt không" khỏi
+    câu hỏi "bộ phân loại nào phù hợp".
+    """
+    model.eval()
+    feats, labels = [], []
+    for batch in loader:
+        batch = {k: v.to(device) for k, v in batch.items()}
+        z_gene, z_cpg_seq, z_mirna_seq = model.gat(batch, graph)
+        fused, _ = model.cross_attn(z_gene, z_cpg_seq, z_mirna_seq)
+        feats.append(fused.cpu().numpy())
+        labels.append(batch["label"].cpu().numpy())
+    return np.concatenate(feats, axis=0), np.concatenate(labels, axis=0)
+
+
+def run_classifier_ablation(model, train_loader, test_loader, graph, device, num_classes):
+    """So sánh bộ phân loại MLP hiện tại với 3 thuật toán phân loại kinh điển,
+    huấn luyện trên cùng biểu diễn z_fused (đóng băng, không cập nhật gradient).
+
+    Trả về dict {tên_thuật_toán: {"f1": macro F1, "accuracy": ..., "precision": macro precision}}.
+    """
+    X_train, y_train = extract_fused_embeddings(model, train_loader, graph, device)
+    X_test,  y_test   = extract_fused_embeddings(model, test_loader,  graph, device)
+
+    mu, sigma = X_train.mean(axis=0), X_train.std(axis=0) + 1e-8
+    X_train_s = (X_train - mu) / sigma
+    X_test_s  = (X_test  - mu) / sigma
+
+    classifiers = {
+        "logistic_regression": LogisticRegression(max_iter=2000, class_weight="balanced"),
+        "svm_rbf":             SVC(kernel="rbf", class_weight="balanced"),
+        "random_forest":       RandomForestClassifier(n_estimators=300, class_weight="balanced",
+                                                       random_state=0),
+    }
+
+    results = {}
+    for name, clf in classifiers.items():
+        clf.fit(X_train_s, y_train)
+        pred = clf.predict(X_test_s)
+        results[name] = {
+            "f1":        float(f1_score(y_test, pred, labels=np.arange(num_classes),
+                                        average="macro", zero_division=0)),
+            "accuracy":  float((pred == y_test).mean()),
+            "precision": float(precision_score(y_test, pred, labels=np.arange(num_classes),
+                                                average="macro", zero_division=0)),
+        }
+    return results
+
+
 def make_loaders(datasets, batch_size, balanced_sampler: bool = False,
                  class_sampling_power: float = 1.0):
     if balanced_sampler:
@@ -234,6 +282,17 @@ def compute_per_class_f1(labels, preds, num_classes):
     return {int(i): float(v) for i, v in enumerate(vals)}
 
 
+def compute_per_class_precision(labels, preds, num_classes):
+    vals = precision_score(
+        labels,
+        preds,
+        labels=np.arange(num_classes),
+        average=None,
+        zero_division=0,
+    )
+    return {int(i): float(v) for i, v in enumerate(vals)}
+
+
 def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_name):
     subtype_names = cfg["training"].get("subtype_names", _DEFAULT_subtype_names)
     num_classes = cfg["model"]["num_classes"]
@@ -246,7 +305,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     )
     graph = build_hetero_graph(feature_names, cfg["data"], cfg["graph"], device=str(device))
     edge_stats = get_edge_stats(graph)
-    model = build_model(dims, cfg["model"], cfg["training"]).to(device)
+    model = GIACModel(dims, cfg["model"], cfg["training"]).to(device)
 
     # Class weight strategy (focal alpha):
     #   - use_class_weights=false → neutral (all ones)
@@ -261,24 +320,11 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     emb_wd    = cfg["training"].get("node_emb_weight_decay", base_wd * 5)
     base_lr   = cfg["training"]["learning_rate"]
     node_emb_ids = {id(p) for p in model.gat.node_emb.parameters()}
-    # v2: patient-injection params (value_scale/value_gamma) → KHÔNG weight decay,
-    # tránh dìm tín hiệu bệnh nhân về 0. Rỗng với v1.
-    inject_ids = set()
-    if hasattr(model.gat, "value_scale"):
-        inject_ids = {id(p) for p in list(model.gat.value_scale.parameters())
-                      + list(model.gat.value_gamma.parameters())}
     param_groups = [
-        {"params": [p for p in model.parameters()
-                    if id(p) not in node_emb_ids and id(p) not in inject_ids],
+        {"params": [p for p in model.parameters() if id(p) not in node_emb_ids],
          "lr": base_lr, "weight_decay": base_wd},
         {"params": list(model.gat.node_emb.parameters()), "lr": base_lr, "weight_decay": emb_wd},
     ]
-    if inject_ids:
-        param_groups.append(
-            {"params": list(model.gat.value_scale.parameters())
-             + list(model.gat.value_gamma.parameters()),
-             "lr": base_lr, "weight_decay": 0.0}
-        )
     optimizer = torch.optim.AdamW(param_groups)
 
     sched_name = cfg["training"].get("scheduler", "onecycle").lower()
@@ -369,6 +415,7 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     val_m = eval_epoch(model, val_loader, graph, device)
     val_f1 = val_m["f1"]
     per_class_f1 = compute_per_class_f1(test_labels, test_preds, num_classes)
+    per_class_precision = compute_per_class_precision(test_labels, test_preds, num_classes)
 
     print(f"\n[{fold_name}] Test (best-checkpoint model):")
     print_metrics(test_m, "test")
@@ -393,6 +440,21 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
     print("  Per-class F1: " + "  ".join(
         f"{name}={per_class_f1[i]:.4f}" for i, name in enumerate(subtype_names[:num_classes])
     ))
+    print("  Per-class Precision: " + "  ".join(
+        f"{name}={per_class_precision[i]:.4f}" for i, name in enumerate(subtype_names[:num_classes])
+    ))
+
+    # So sánh bộ phân loại MLP với các thuật toán kinh điển trên cùng z_fused
+    clf_ablation = {}
+    if cfg["logging"].get("run_classifier_ablation", False):
+        clf_ablation = run_classifier_ablation(
+            model, train_loader, test_loader, graph, device, num_classes
+        )
+        print("  Classifier ablation (trên cùng z_fused, so với MLP hiện tại):")
+        print(f"    {'mlp (hiện tại)':<20} F1={test_m['f1']:.4f}  Acc={test_m['accuracy']:.4f}  "
+              f"P={test_m['precision']:.4f}")
+        for name, r in clf_ablation.items():
+            print(f"    {name:<20} F1={r['f1']:.4f}  Acc={r['accuracy']:.4f}  P={r['precision']:.4f}")
 
     attn = collect_attn_stats(model, test_loader, graph, device)
     print(f"  Attention cpg  : std={attn['cpg_std']:.4f} max={attn['cpg_max']:.4f} "
@@ -426,6 +488,8 @@ def fit_one_split(cfg, datasets, feature_names, dims, metadata, device, fold_nam
         "val_metrics": val_m,
         "test_metrics": test_m,
         "per_class_f1": per_class_f1,
+        "per_class_precision": per_class_precision,
+        "classifier_ablation": clf_ablation,
         "checkpoint": ckpt_path,
         "viz_dir": viz_dir,
         "per_ct_f1": per_ct_f1,
@@ -462,6 +526,29 @@ def build_summary(results, class_names, mode, n_folds):
         if vals.size:
             pcf[str(c)] = {"mean": float(vals.mean()), "std": float(vals.std(ddof=0))}
     summary["per_class_f1"] = pcf
+
+    # ── Per-class Precision ──
+    pcp = {}
+    for c in range(num_classes):
+        vals = np.array([r["per_class_precision"][c] for r in results
+                         if c in r.get("per_class_precision", {})])
+        if vals.size:
+            pcp[str(c)] = {"mean": float(vals.mean()), "std": float(vals.std(ddof=0))}
+    summary["per_class_precision"] = pcp
+
+    # ── Classifier ablation (MLP vs Logistic Regression / SVM / Random Forest) ──
+    clf_lists = [r.get("classifier_ablation", {}) for r in results if r.get("classifier_ablation")]
+    clf_names = sorted(set().union(*[d.keys() for d in clf_lists])) if clf_lists else []
+    clf_out = {}
+    if clf_names:
+        for name in clf_names:
+            entry = {}
+            for metric in ["f1", "accuracy", "precision"]:
+                vals = np.array([d[name][metric] for d in clf_lists if name in d])
+                if vals.size:
+                    entry[metric] = {"mean": float(vals.mean()), "std": float(vals.std(ddof=0))}
+            clf_out[name] = entry
+    summary["classifier_ablation"] = clf_out
 
     # ── Per-cancer-type F1 ──
     all_per_ct = [r.get("per_ct_f1", {}) for r in results]
@@ -560,6 +647,26 @@ def print_summary(summary):
         for c in sorted(pcf, key=int):
             label = names[int(c)] if int(c) < len(names) else f"class {c}"
             print(f"  {label:>12}  {pcf[c]['mean']:>8.4f}  {pcf[c]['std']:>7.4f}")
+
+    pcp = summary.get("per_class_precision", {})
+    if pcp:
+        print(f"\nPer-class Precision ({n_folds}-fold mean ± std):")
+        print(f"  {'Class':>12}  {'P mean':>8}  {'P std':>7}")
+        for c in sorted(pcp, key=int):
+            label = names[int(c)] if int(c) < len(names) else f"class {c}"
+            print(f"  {label:>12}  {pcp[c]['mean']:>8.4f}  {pcp[c]['std']:>7.4f}")
+
+    clf_ab = summary.get("classifier_ablation", {})
+    if clf_ab:
+        print(f"\nClassifier ablation — MLP (hiện tại) vs kinh điển, trên cùng z_fused "
+              f"({n_folds}-fold mean ± std):")
+        mlp_f1 = summary["metrics"].get("f1", {})
+        if mlp_f1:
+            print(f"  {'mlp (hiện tại)':<20} F1={mlp_f1['mean']:.4f}±{mlp_f1['std']:.4f}")
+        for name, d in clf_ab.items():
+            f1d = d.get("f1", {})
+            if f1d:
+                print(f"  {name:<20} F1={f1d['mean']:.4f}±{f1d['std']:.4f}")
 
     attn = summary.get("attention", {})
     if attn:

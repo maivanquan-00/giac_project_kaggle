@@ -1,8 +1,8 @@
 """
 visualize_full_graph.py
 -----------------------
-Vẽ TOÀN BỘ Heterogeneous Graph của GIAC: tất cả ~3500 gene + ~3500 cpg + ~600 mirna nodes
-cùng ~240K edges qua 13 relations.
+Vẽ TOÀN BỘ Heterogeneous Graph của GIAC: tất cả ~3500 gene + ~3500 cpg + ~450 mirna nodes
+cùng ~98K edges qua 8 relation types (3 quan hệ sinh học + self-loop).
 
 3-cluster layout:
     - Gene cluster:  trên đỉnh (12 o'clock)
@@ -14,7 +14,7 @@ Edges colored by relation type (13 colors), alpha rất thấp để tránh hair
 
 Usage:
     python scripts/visualize_full_graph.py \\
-        --config configs/config.yaml \\
+        --config configs/config_minimal_graph_relaxed_topk32.yaml \\
         --output figures/giac_graph_gi.png
 
     # Custom edge alpha + node size:
@@ -54,7 +54,7 @@ from src.data.graph_builder import build_hetero_graph, RELATION_ORDER
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--config", default="configs/config.yaml")
+    p.add_argument("--config", default="configs/config_minimal_graph_relaxed_topk32.yaml")
     p.add_argument("--output", required=True, help="Output path (PNG/PDF)")
     p.add_argument("--format", choices=["png", "pdf"], default="png")
     p.add_argument("--node-size", type=float, default=4.0)
@@ -145,13 +145,13 @@ def plot_graph(graph, pos, args):
     n_mirna = graph["mirna"].num_nodes
 
     # ─── Plot edges per relation type ──────────────────────────────
-    # 13 relations; use a perceptually-distinct colormap
+    # 8 relation types; use a perceptually-distinct colormap
     cmap = plt.get_cmap("tab20")
     relation_colors = [cmap(i / 13.0) for i in range(13)]
 
     total_edges = 0
     edge_counts_per_rel = {}
-    print("[edges] Rendering 13 relations...")
+    print("[edges] Rendering 8 relation types...")
     for i, (et, arrow, desc) in enumerate(RELATION_ORDER):
         if et not in graph.edge_index_dict:
             edge_counts_per_rel[desc] = 0
@@ -275,7 +275,7 @@ def plot_graph(graph, pos, args):
     ax.set_title(
         f"GIAC Heterogeneous Graph — "
         f"{n_total_nodes:,} nodes ({n_gene:,} gene + {n_cpg:,} cpg + {n_mirna:,} mirna), "
-        f"{total_edges:,} edges across 13 relations",
+        f"{total_edges:,} edges across 8 relation types",
         fontsize=15, pad=20,
     )
     ax.set_aspect("equal")

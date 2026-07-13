@@ -1,5 +1,5 @@
-# Data
-data/
+# Data (chỉ ở gốc repo — KHÔNG dùng "data/" trần vì sẽ chặn nhầm src/data/, Source_Code/... )
+/data/
 
 # Logs & experiment notes
 test_old/
@@ -18,7 +18,7 @@ preprocessed_data/
 
 
 PIPELINE.md
-Phiếu_giao_nhiệm_vụ.xlsx
+Phiếu_giao_nhiệm_vụ*.xlsx
 
 
 #Documents
@@ -29,9 +29,14 @@ OPUS_PROMPT.md
 output_reproduced.md
 output_moxgate_5fold.md
 
+# Reference papers (PDF) ở gốc repo — không đẩy lên GitHub (bản quyền + repo bloat)
+/*.pdf
 
-2025 - GAIN-BRCA- a graph-based AI-net framework for breast cancer subtype classification using multiomics data.pdf
-2025 - MOFNet- a deep learning framework for multiomics data fusion in cancer subtype classification.pdf
-2025 - MoXGATE- Modality-Aware Cross-Attention for Multi-Omic Gastrointestinal Cancer Subtype Classification.pdf
-moBRCA-net.pdf
-GCOA-Net.pdf
+# Báo cáo ĐATN (LaTeX) — chứa thông tin cá nhân (SĐT/email ở bìa, phiếu giao NV), không push
+Bao_cao_do_an/
+
+# Bản sao mã nguồn để nộp — trùng nội dung với src/, không push
+Source_Code/
+
+# Editor
+.vscode/

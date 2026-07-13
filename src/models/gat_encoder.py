@@ -17,17 +17,14 @@ def _make_hetero_conv(hidden_dim: int, n_heads: int, dropout: float) -> HeteroCo
         return GATv2Conv(hidden_dim, head_dim,
                          heads=n_heads, add_self_loops=False, dropout=dropout)
 
+    # 8 relation types khớp graph_builder: emQTL (CpG↔Gene), miRTarBase (miRNA↔Gene),
+    # STRING PPI (Gene↔Gene) + 3 self-loop.
     return HeteroConv({
         ("cpg",   "regulates",    "gene"):  bip(),
         ("gene",  "regulated_by", "cpg"):   bip(),
         ("mirna", "targets",      "gene"):  bip(),
         ("gene",  "targeted_by",  "mirna"): bip(),
-        ("cpg",   "coregulates",  "mirna"): bip(),
-        ("mirna", "coregulates",  "cpg"):   bip(),
         ("gene",  "ppi",          "gene"):  hom(),
-        ("gene",  "copathway",    "gene"):  hom(),
-        ("mirna", "samefamily",   "mirna"): hom(),
-        ("cpg",   "sameisland",   "cpg"):   hom(),
         ("gene",  "self_loop",    "gene"):  hom(),
         ("cpg",   "self_loop",    "cpg"):   hom(),
         ("mirna", "self_loop",    "mirna"): hom(),
@@ -37,9 +34,6 @@ def _make_hetero_conv(hidden_dim: int, n_heads: int, dropout: float) -> HeteroCo
 class MultiOmicGATModule(nn.Module):
     def __init__(self, dims: dict, hidden_dim: int, n_heads: int,
                  n_layers: int, dropout: float, topk_seq: int = 32,
-                 film_per_channel: bool = False,
-                 use_modality_summary: bool = False,
-                 summary_condition_topk: bool = False,
                  topk_selection: str = "zscore",
                  use_gat: bool = True,
                  use_film: bool = True,
@@ -64,17 +58,6 @@ class MultiOmicGATModule(nn.Module):
         # nhất của bệnh nhân) | "random" (ablation: chọn K ngẫu nhiên/bệnh nhân để
         # kiểm chứng tiêu chí |z-score| có mang tín hiệu hay không).
         self.topk_selection = topk_selection
-        # 2 cải tiến opt-in (default False = behavior v1 gốc):
-        #   film_per_channel: γ/β FiLM thành vector (H,) thay scalar → điều biến
-        #     từng channel theo value bệnh nhân (#2).
-        #   use_modality_summary: thêm 1 token "tóm tắt full-signal" (pool TOÀN BỘ
-        #     CpG/miRNA, như nhánh gene) vào đầu chuỗi K/V → tận dụng cả 3500
-        #     feature thay vì chỉ top-32, không cần per-patient GAT.
-        #   summary_condition_topk: trộn summary full-signal vào từng token TopK qua
-        #     gate học được; gate init=0 nên ban đầu không phá baseline.
-        self.film_per_channel     = film_per_channel
-        self.use_modality_summary = use_modality_summary
-        self.summary_condition_topk = summary_condition_topk
 
         self.node_emb = nn.ParameterDict({
             "gene":  nn.Parameter(torch.empty(dims["gene"],  hidden_dim)),
@@ -102,25 +85,15 @@ class MultiOmicGATModule(nn.Module):
         nn.init.normal_(self.cpg_pos_emb.weight,   std=0.02)
         nn.init.normal_(self.mirna_pos_emb.weight, std=0.02)
 
-        # Phase 2.1a — Patient-aware FiLM params for top-K modulation.
+        # Phase 2.1a — Patient-aware FiLM params (scalar) for top-K modulation.
         # z = E_topk + γ * E_topk * weights + β * weights; init γ=1, β=0 matches baseline.
-        # film_per_channel=True → γ/β là vector (H,) (broadcast per channel); False → scalar.
-        film_shape = (hidden_dim,) if film_per_channel else (1,)
-        self.film_cpg_gamma   = nn.Parameter(torch.ones(film_shape))
-        self.film_cpg_beta    = nn.Parameter(torch.zeros(film_shape))
-        self.film_mirna_gamma = nn.Parameter(torch.ones(film_shape))
-        self.film_mirna_beta  = nn.Parameter(torch.zeros(film_shape))
+        self.film_cpg_gamma   = nn.Parameter(torch.ones(1))
+        self.film_cpg_beta    = nn.Parameter(torch.zeros(1))
+        self.film_mirna_gamma = nn.Parameter(torch.ones(1))
+        self.film_mirna_beta  = nn.Parameter(torch.zeros(1))
 
         # Summary vector norm for gene query only
         self.gene_norm = nn.LayerNorm(hidden_dim)
-
-        # Full-signal summary norms (dùng cho summary token hoặc condition TopK)
-        if use_modality_summary or summary_condition_topk:
-            self.cpg_sum_norm   = nn.LayerNorm(hidden_dim)
-            self.mirna_sum_norm = nn.LayerNorm(hidden_dim)
-        if summary_condition_topk:
-            self.cpg_summary_gate   = nn.Parameter(torch.tensor(0.0))
-            self.mirna_summary_gate = nn.Parameter(torch.tensor(0.0))
 
     def film_summary(self):
         """Trả scalar mean của γ/β (tương thích reporting cho cả scalar lẫn vector)."""
@@ -159,26 +132,6 @@ class MultiOmicGATModule(nn.Module):
         mirna_g, mirna_b = (self.film_mirna_gamma, self.film_mirna_beta) if self.use_film else (None, None)
         z_cpg_seq   = self._topk_seq(batch["meth"],  x_dict["cpg"],  self.topk_seq, cpg_pos,   cpg_g,   cpg_b)
         z_mirna_seq = self._topk_seq(batch["mirna"], x_dict["mirna"], self.topk_seq, mirna_pos, mirna_g, mirna_b)
-
-        # ── Full-signal summary: pool TOÀN BỘ feature (như gene). Summary này có
-        #    thể là token riêng, hoặc được trộn vào từng TopK token qua gate. ──
-        if self.use_modality_summary or self.summary_condition_topk:
-            z_cpg_full = self.cpg_sum_norm(
-                torch.matmul(batch["meth"], x_dict["cpg"]) / math.sqrt(batch["meth"].shape[1])
-            ).unsqueeze(1)                                  # (B, 1, H)
-            z_mirna_full = self.mirna_sum_norm(
-                torch.matmul(batch["mirna"], x_dict["mirna"]) / math.sqrt(batch["mirna"].shape[1])
-            ).unsqueeze(1)
-
-            if self.summary_condition_topk:
-                z_cpg_seq = z_cpg_seq + torch.tanh(self.cpg_summary_gate) * z_cpg_full
-                z_mirna_seq = z_mirna_seq + torch.tanh(self.mirna_summary_gate) * z_mirna_full
-
-        # ── Full-signal summary token: ghép vào đầu chuỗi K/V để cross-attention
-        #    thấy [tóm-tắt-toàn-cục, top-K] ──
-        if self.use_modality_summary:
-            z_cpg_seq   = torch.cat([z_cpg_full,   z_cpg_seq],   dim=1)   # (B, K+1, H)
-            z_mirna_seq = torch.cat([z_mirna_full, z_mirna_seq], dim=1)
 
         return z_gene, z_cpg_seq, z_mirna_seq
 

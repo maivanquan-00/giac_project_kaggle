@@ -25,7 +25,7 @@
 ### 1.2 Sản phẩm đề xuất
 
 1. **Kiến trúc tổng quát** áp dụng được cho nhiều bộ dữ liệu đa omics, không bị giới hạn loại ung thư hay số subtype cụ thể (scope hiện tại: GI/BRCA/STAD, mỗi bộ 5 + 4 lớp; UCEC/KIPAN làm sau).
-2. **Đồ thị dị thể đa omics** tích hợp **8 loại quan hệ sinh học** từ 7 cơ sở dữ liệu chuẩn (emQTL, STRING PPI, Reactome, miRTarBase, TargetScan miR family, Illumina 450K CpG island, co-regulation suy diễn).
+2. **Đồ thị dị thể đa omics** tích hợp **3 loại quan hệ sinh học** từ 3 cơ sở dữ liệu chuẩn (TCGA emQTL, STRING PPI, miRTarBase) — cộng self-loop thành **8 relation types** (tính cả chiều ngược) khi message-passing.
 3. **Cross-Attention bất đối xứng**: gene đóng vai trò *Query*, CpG/miRNA đóng vai trò *Key/Value* — phản ánh đúng *central dogma* (methylation/miRNA điều khiển ngược lên biểu hiện gene).
 4. **Source code module hoá**, dễ mở rộng sang dataset mới (chỉ cần thêm 1 file `config_*.yaml` và file `clean_labels_*.csv`).
 5. **Kết quả thực nghiệm** kiểm chứng bằng **3 seeds × 5-fold Stratified CV = 15 runs/dataset** thay vì single split như MoXGATE — đảm bảo độ tin cậy thống kê.
@@ -36,11 +36,11 @@
 
 | Khía cạnh           | **MoXGATE** ([arXiv 2506.06980](https://arxiv.org/abs/2506.06980)) | **GIAC (đề xuất)**                                                         |
 | ------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Đồ thị              | ❌ Không dùng — 3 modalities xử lý độc lập                          | ✅ **Heterogeneous Graph 8 loại quan hệ**                                   |
-| Encoder             | 3 nhánh **Self-Attention** (8 heads, 256d) độc lập                 | **HeteroGAT** (GATv2 × 13 relation types) chia sẻ qua đồ thị               |
+| Đồ thị              | ❌ Không dùng — 3 modalities xử lý độc lập                          | ✅ **Heterogeneous Graph 3 quan hệ sinh học (8 relation types)**            |
+| Encoder             | 3 nhánh **Self-Attention** (8 heads, 256d) độc lập                 | **HeteroGAT** (GATv2 × 8 relation types) chia sẻ qua đồ thị                |
 | Cross-Attention     | **Đối xứng** — stack 3 modalities, attention xếp đều               | **Bất đối xứng** — gene = Q, CpG/miRNA = K/V                               |
 | Kích hoạt attention | softmax (dày đặc)                                                  | **Entmax 1.5** (sparse → interpretable per-patient)                        |
-| Số tham số          | ~12.6M                                                             | **~830K (1/15)** — lightweight                                             |
+| Số tham số          | ~12M                                                               | **~1.14M (≈1/10)** — lightweight                                           |
 | Loss                | Focal (γ=2, α=1)                                                   | Focal **per-class α từ class frequency** + label smoothing + Frobenius reg |
 | Đánh giá            | Single 90/10 split (COAD+READ+STAD train, ESCA test)               | **5-fold Stratified CV × 3 seeds = 15 runs**                               |
 | Dataset             | GI + BRCA                                                          | GI + BRCA + STAD (mỗi bộ 5 + 4 lớp)                                        |
@@ -122,7 +122,7 @@ TCGA STAR TPM TSV  ──────┤  lọc protein-coding
 
 **Lưu ý quan trọng:**
 - Dữ liệu Xena/STAR đã ở dạng `log2(TPM+1)` — **KHÔNG log thêm** lần nữa (bug double-log đã fix 2026-05-09: range gene từ [0, 4] → [0, 15]).
-- Cột phải là **gene symbol**, không phải Ensembl ID — graph PPI/Reactome dùng symbol làm key.
+- Cột phải là **gene symbol**, không phải Ensembl ID — graph PPI (STRING) dùng symbol làm key.
 - Sanity check: `max ≈ 15-20`, `median ≈ 5-8`. Nếu max < 6 → có double-log bug.
 
 ### 3.4 miRNA Expression (`preprocess_miRNA.py`)
@@ -202,7 +202,7 @@ StratifiedKFold(n=5)  →  5 fold × (train, val, test)
                           │    2. ANOVA F-test (f_classif) → top-K theo F-score
                           │       gene_top_k = 3500
                           │       meth_top_k = 3500
-                          │       mirna_top_k = 1881 (giữ tất cả)
+                          │       mirna_top_k = 450
                           │    3. Minority-class boost: với mỗi class hiếm c
                           │       chạy ANOVA binary (c vs rest), lấy top-N
                           │       feature, MERGE (union, dedup) vào tập chính
@@ -215,7 +215,7 @@ StratifiedKFold(n=5)  →  5 fold × (train, val, test)
                           │    z-score = (x - train_mean) / train_std
                           ▼
                 ANOVA-selected, z-scored arrays
-                (gene ≈ 3500-3800, meth ≈ 3500-3800, mirna = 1881)
+                (gene ≈ 3500-3800, meth ≈ 3500-3800, mirna = 450)
 ```
 
 `minority_classes` cho từng dataset (config-level):
@@ -232,28 +232,26 @@ StratifiedKFold(n=5)  →  5 fold × (train, val, test)
 
 | Node    | Số lượng                                  | Embedding                                               |
 | ------- | ----------------------------------------- | ------------------------------------------------------- |
-| `gene`  | ~3.500-3.800 (sau ANOVA + minority boost) | `nn.Parameter(N_g, 64)` learnable, share giữa bệnh nhân |
-| `cpg`   | ~3.500-3.800 (CpG site đã chọn)           | `nn.Parameter(N_c, 64)` learnable                       |
-| `mirna` | ~500 (giữ toàn bộ)                        | `nn.Parameter(N_m, 64)` learnable                       |
+| `gene`  | ~3.500-3.800 (sau ANOVA + minority boost) | `nn.Parameter(N_g, 96)` learnable, share giữa bệnh nhân |
+| `cpg`   | ~3.500-3.800 (CpG site đã chọn)           | `nn.Parameter(N_c, 96)` learnable                       |
+| `mirna` | ~450 (sau ANOVA, baseline GI)             | `nn.Parameter(N_m, 96)` learnable                       |
 
-Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), không phải patient-specific. Tổng ~568K params (68% tổng số params toàn model).
+Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), không phải patient-specific. Tổng ~773K params (68% tổng số params toàn model, hidden_dim 96).
 
-### 4.2 8 loại cạnh sinh học (13 relation types khi tính cả chiều ngược)
+### 4.2 3 quan hệ sinh học (8 relation types khi tính cả chiều ngược + self-loop)
 
-| #   | Quan hệ                                  | Nguồn                                                          | Ý nghĩa sinh học                                        | # edges (GI) |
-| --- | ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------- | ------------ |
-| 1   | `cpg → regulates → gene` (+ chiều ngược) | TCGA emQTL `TCGA_emQTL_<cohort>.txt`, `p < 0.05`               | Methylation điều tiết biểu hiện gene                    | ~24K         |
-| 2   | `gene ↔ ppi ↔ gene`                      | STRING v12 `combined_score ≥ 700`                              | Tương tác protein-protein                               | ~30K         |
-| 3   | `mirna → targets → gene` (+ chiều ngược) | miRTarBase `hsa_MTI.csv`                                       | miRNA ức chế biểu hiện gene                             | ~145K        |
-| 4   | `gene ↔ copathway ↔ gene`                | Reactome `Ensembl2Reactome_All_Levels.txt`, pathway ≤ 50 genes | Cùng pathway → co-regulated                             | ~15K         |
-| 5   | `mirna ↔ samefamily ↔ mirna`             | TargetScan `miR_Family_Info.txt`                               | Cùng seed family → cơ chế tương tự                      | ~1.4K        |
-| 6   | `cpg ↔ coregulates ↔ mirna`              | **Suy diễn** từ #1 ∩ #3 (cùng regulate gene chung)             | Đóng vòng CpG–Gene–miRNA                                | ~18K         |
-| 7   | `cpg ↔ sameisland ↔ cpg`                 | Illumina 450K manifest `humanmethylation450_15017482_v1-2.csv` (Island+Shore) | Cùng CpG island → co-methylated, cùng regulatory region | ~991/fold |
-| 8   | Self-loops (3 cho mỗi node type)         | identity                                                       | Bảo toàn thông tin gốc qua GATv2                        | = số nodes   |
+| #   | Quan hệ                                  | Nguồn                                              | Ý nghĩa sinh học                     | # edges (GI) |
+| --- | ---------------------------------------- | -------------------------------------------------- | ------------------------------------ | ------------ |
+| 1   | `cpg → regulates → gene` (+ chiều ngược) | TCGA emQTL `TCGA_emQTL_<cohort>.txt`, `p < 0.05`   | Methylation điều tiết biểu hiện gene | ~24K         |
+| 2   | `mirna → targets → gene` (+ chiều ngược) | miRTarBase `hsa_MTI.csv`                           | miRNA ức chế biểu hiện gene          | ~145K        |
+| 3   | `gene ↔ ppi ↔ gene`                      | STRING v12 `combined_score ≥ ppi_score_threshold` | Tương tác protein-protein            | ~30K         |
+| —   | Self-loops (3 cho mỗi node type)         | identity                                           | Bảo toàn thông tin gốc qua GATv2     | = số nodes   |
 
-**Capping** để tránh đồ thị quá dày (config `graph.max_edges_per_node = 20`, `max_targets_per_mirna = 100`, `max_coregulation_edges = 10`, `max_pathway_size = 50`, `MAX_FAMILY_SIZE = 20`).
+→ **5 relation sinh học** (emQTL xuôi/ngược, miRTarBase xuôi/ngược, PPI) **+ 3 self-loop = 8 relation types**. Đây chính là tập relation trong [`gat_encoder.py`](src/models/gat_encoder.py) và [`graph_builder.py`](src/data/graph_builder.py).
 
-> **Ghi chú #7 (CpG island):** Thực nghiệm seed 42 GI dataset cho thấy ~991 edges/fold (Island+Shore) không cải thiện Macro F1 — ANOVA feature selection phân tán probe khắp genome, ít cặp probe cùng island cùng lọt qua. Giữ trong thiết kế vì có biological justification; cần 3-seed so sánh đầy đủ để kết luận.
+**Capping** để tránh đồ thị quá dày: config `graph.max_edges_per_node` (cap đối xứng cả 2 đầu emQTL), `graph.max_targets_per_mirna`, `graph.ppi_score_threshold`.
+
+> **Lưu ý lịch sử:** các phiên bản trước REBUILD từng thử thêm Reactome (co-pathway), TargetScan (miRNA family), co-regulation suy diễn và CpG island (Illumina manifest) — nhưng không cải thiện Macro F1 nên đã **gỡ khỏi pipeline hiện tại**. Code dựng đồ thị hiện chỉ còn 3 quan hệ trên.
 
 ### 4.3 Quy tắc matching tên (quan trọng cho lookup nhất quán)
 
@@ -261,7 +259,7 @@ Các node embedding **chỉ encode "feature identity"** (TP53 luôn là TP53), k
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Gene     | UPPERCASE (`TP53`) — cho cả `gene_idx`, alias STRING, HGNC mapping                                                                   |
 | CpG      | giữ nguyên (`cg00000029`)                                                                                                            |
-| miRNA    | lowercase (`hsa-mir-21-1`); thêm regex strip suffix `-1/-2/-3` (precursor) và `-3p/-5p` (mature) khi cần match TargetScan/miRTarBase |
+| miRNA    | lowercase (`hsa-mir-21-1`); thêm regex strip suffix `-1/-2/-3` (precursor) và `-3p/-5p` (mature) khi cần match miRTarBase |
 
 ```
 gene_idx  : { "TP53": 0, "BRCA1": 1, ... }              # UPPER
@@ -279,16 +277,16 @@ Một bug đã được fix: regex chuẩn hoá miRNA cũ `r'-\d+$'` quá tham (
 Input batch:                    Heterogeneous Graph (shared, build 1 lần per fold)
  gene  (B, F_g≈3500)              ┌─ gene  nodes (N_g, 64)
  meth  (B, F_m≈3500)              ├─ cpg   nodes (N_c, 64)
- mirna (B, F_mi=1881)             └─ mirna nodes (N_m, 64) + 7 edge types
+ mirna (B, F_mi=450)             └─ mirna nodes (N_m, 64) + 8 relation types
         │                                              │
         └──────────────────────┬───────────────────────┘
                                ▼
        ┌──────────────────── MODULE 1 ────────────────────┐
        │     MultiOmicGATModule (gat_encoder.py)          │
        │                                                  │
-       │  Layer 1: HeteroConv(GATv2 × 12 relations)       │
+       │  Layer 1: HeteroConv(GATv2 × 8 relations)       │
        │           + Residual + ELU + LayerNorm           │
-       │  Layer 2: HeteroConv(GATv2 × 12 relations)       │
+       │  Layer 2: HeteroConv(GATv2 × 8 relations)       │
        │           + Residual + ELU + LayerNorm           │
        │                                                  │
        │  Outputs (per patient):                          │
@@ -336,7 +334,7 @@ Input batch:                    Heterogeneous Graph (shared, build 1 lần per f
 
 **File:** [src/models/gat_encoder.py](src/models/gat_encoder.py)
 
-- **`HeteroConv` × 2 layers**, mỗi layer ánh xạ qua 12 `GATv2Conv` (1 per relation type), aggregator `sum`, multi-head 4 heads × head_dim 16 = 64.
+- **`HeteroConv` × 2 layers**, mỗi layer ánh xạ qua 8 `GATv2Conv` (1 per relation type), aggregator `sum`, multi-head 4 heads × head_dim 24 = 96.
 - **Residual + LayerNorm + ELU + Dropout** sau mỗi layer:
   ```
   x_t = LayerNorm( x_t + ELU(Dropout(out_t)) )    ∀ t ∈ {gene, cpg, mirna}
@@ -390,21 +388,19 @@ $$
 
 - $\gamma = 2.0$, $\epsilon = 0.05$.
 - $\alpha_c$ tính **động** từ class frequency của train set qua `compute_class_weights`, normalize mean = 1 (trừ khi bật `use_manual_focal_alpha=true` để giữ giá trị config).
-- **Frobenius regularization** $\lambda_F = 0.001$ trên mọi `W_*` của cross-attention để tránh weight collapse khi entmax15 đẩy gradient về biên.
+- **Frobenius regularization** $\lambda_F = 0.002$ chỉ trên các projection $W_q, W_k, W_v$ của cross-attention (KHÔNG gồm $W_{out}$) để tránh weight collapse khi entmax15 đẩy gradient về biên.
 
-### 5.4 Tổng tham số (~830K) — phân bố
+### 5.4 Tổng tham số (~1.14M, hidden_dim 96) — phân bố
 
-| Component                                   | Params    | %    |
-| ------------------------------------------- | --------- | ---- |
-| 3 node embedding tables (3 × N × 64)        | ~568K     | 68%  |
-| HeteroConv 2 layers × 12 GATv2 relations    | ~98K      | 12%  |
-| Cross-attention (W_q, 2×W_k, 2×W_v, W_o)    | ~25K      | 3%   |
-| Position embeddings (2 × 32 × 64)           | ~4K       | 0.5% |
-| LayerNorms + classifier head                | ~7K       | 0.7% |
-| Misc (log_temp, modality_logits, alpha buf) | <1K       | —    |
-| **Total**                                   | **~830K** | 100% |
+| Component                                          | Params     | %    |
+| -------------------------------------------------- | ---------- | ---- |
+| 3 node embedding tables (3 × N × 96)               | ~773K      | 68%  |
+| HeteroConv 2 layers × 8 GATv2 relations            | ~298K      | 26%  |
+| Cross-attention (W_q, 2×W_k, 2×W_v, W_o, pos emb)   | ~71K       | 6%   |
+| Classifier head + LayerNorms + misc                | ~3K        | 0.3% |
+| **Total**                                          | **~1.14M** | 100% |
 
-→ **MoXGATE ~12.6M params** → GIAC chỉ bằng **1/15**, nhưng đạt độ ổn định cao hơn 2-5 lần qua multi-seed (xem §7).
+→ **MoXGATE ~12M params** → GIAC chỉ bằng **≈1/10** (nhẹ hơn ~1 bậc). *(Số tham số phụ thuộc số đặc trưng chọn mỗi fold; node embedding chiếm phần lớn. Lấy `n_params` chính xác từ log train khi cần.)*
 
 ---
 
@@ -421,7 +417,7 @@ $$
 | **Loss**              | Focal + Frobenius reg                                                                                                                                                                                                                                                               |
 | **Class imbalance**   | (a) Per-class `α` từ inverse frequency  (b) Optional `WeightedRandomSampler` (đã thử nghiệm — gây collapse trên hầu hết dataset, mặc định OFF)  (c) **Minority augmentation**: thêm Gaussian noise σ=0.10 vào sample minority class trong mỗi batch — chống memorize bệnh nhân hiếm |
 | **Gradient clipping** | `max_norm = 1.0`                                                                                                                                                                                                                                                                    |
-| **Early stopping**    | Patience = 20 epochs trên `val_f1` macro                                                                                                                                                                                                                                            |
+| **Early stopping**    | Patience = 15 (GI/STAD) hoặc 20 (BRCA/UCEC) epochs trên `val_f1` macro                                                                                                                                                                                                              |
 | **Epochs**            | 150                                                                                                                                                                                                                                                                                 |
 | **Model selection**   | best `val_f1` macro (có thể đổi `model_selection_metric: val_loss`)                                                                                                                                                                                                                 |
 
@@ -434,24 +430,25 @@ $$
 
 ```bash
 # 1 dataset, 3 seeds × 5 folds
-python run_multi_seed.py --config configs/config_minimal_graph_relaxed_topk32.yaml          # GI
-python run_multi_seed.py --config configs/config_brca.yaml     # BRCA
-python run_multi_seed.py --config configs/config_ucec.yaml     # UCEC
-python run_multi_seed.py --config configs/config_kipan.yaml    # KIPAN
+python run_multi_seed.py --config configs/config_minimal_graph_relaxed_topk32.yaml   # GI 5-class (baseline)
+python run_multi_seed.py --config configs/config_4class.yaml                          # GI 4-class
+python run_multi_seed.py --config configs/config_brca.yaml                            # BRCA
+python run_multi_seed.py --config configs/config_ucec.yaml                            # UCEC
+python run_multi_seed.py --config configs/config_gi_stad_only.yaml                    # STAD-only
 
 # Single-seed debug
 python train.py --config configs/config_minimal_graph_relaxed_topk32.yaml --seed 42
 ```
 
-`run_multi_seed.py` parse stdout từng seed, aggregate mean ± std, in **block markdown sẵn sàng paste vào [docs/runs/](docs/runs/)**.
+`run_multi_seed.py` chạy `train.py` cho từng seed, **đọc `cv_summary.json` mỗi seed rồi aggregate mean ± std** và in block markdown tóm tắt.
 
 ---
 
 ## 7. Kết quả thực nghiệm
 
-> **Đánh giá apples-to-apples**: CẢ GIAC và MoXGATE đều chạy **cùng protocol — 5-fold Stratified CV × 3 seeds (42/123/2024) = 15 runs**, cùng data, đủ số lớp. MoXGATE dùng `train_kfold.py` (bản dựng lại). Số raw: [docs/runs/testnew.md](docs/runs/testnew.md) (MoXGATE) + [docs/runs/2026-06-08_valf1_protocol_4run_comparison.md](docs/runs/2026-06-08_valf1_protocol_4run_comparison.md) (GIAC GI).
+> **Đánh giá apples-to-apples**: CẢ GIAC và MoXGATE (bản dựng lại) đều chạy **cùng protocol — 5-fold Stratified CV × 3 seeds (42/123/2024) = 15 runs**, cùng data, đủ số lớp. Số raw: [docs/runs/testnew.md](docs/runs/testnew.md) (MoXGATE) + [docs/runs/2026-06-08_valf1_protocol_4run_comparison.md](docs/runs/2026-06-08_valf1_protocol_4run_comparison.md) (GIAC GI).
 >
-> **Scope hiện tại: GI (5+4 lớp), STAD (5+4 lớp), BRCA (5 lớp).** UCEC/KIPAN tạm bỏ khỏi scope (làm sau nếu còn thời gian).
+> **Scope kết quả hiện tại: GI (5+4 lớp), STAD (5+4 lớp), BRCA (5 lớp).** UCEC có config nhưng chưa chạy 15-run; KIPAN/LGG chỉ còn pipeline preprocessing (chưa có config train).
 >
 > ⚠️ **Lưu ý trung thực:** MoXGATE ở đây là **bản tự dựng lại** (paper không công bố code) → có thể yếu hơn bản gốc. Vì vậy **KHÔNG kết luận "GIAC thắng MoXGATE"**. Ý nghĩa bảng dưới: dưới **cùng điều kiện kiểm soát (cùng data, cùng 15-run CV)**, cấu trúc sinh học của GIAC **không làm giảm** hiệu năng — còn nhỉnh hơn ở GI/STAD — ĐỒNG THỜI thêm được interpretability per-bệnh-nhân + nhẹ 15×.
 
@@ -510,11 +507,12 @@ giac_project_kaggle/
 ├── run_multi_seed.py               ← wrapper 3 seeds, aggregate mean ± std
 │
 ├── configs/                        ← 1 YAML per dataset
-│   ├── config_minimal_graph_relaxed_topk32.yaml  (GI: BASELINE 8-relation)
+│   ├── config_minimal_graph_relaxed_topk32.yaml  (GI 5-class: BASELINE 8-relation)
+│   ├── config_4class.yaml          (GI 4-class)
 │   ├── config_brca.yaml
 │   ├── config_ucec.yaml
-│   ├── config_kipan.yaml
-│   └── config_gi_stad_only.yaml    (STAD-only, 5 subtypes đầy đủ)
+│   ├── config_gi_stad_only.yaml    (STAD-only 5-class)
+│   └── config_gi_stad_only_4class.yaml  (STAD-only 4-class)
 │
 ├── src/
 │   ├── model.py                    GIACModel + ModalityCrossAttention
@@ -523,7 +521,7 @@ giac_project_kaggle/
 │   │   └── classifier.py           SubtypeClassifier + FocalLoss
 │   ├── data/
 │   │   ├── dataset.py              load + ANOVA + StratifiedKFold + z-score
-│   │   └── graph_builder.py        build HeteroData từ 7 nguồn prior knowledge
+│   │   └── graph_builder.py        build HeteroData từ 3 nguồn prior knowledge
 │   └── utils.py                    metrics, plotting, checkpoint
 │
 ├── preprocessed_data/              ← pipeline TCGA raw → final_*.csv
@@ -575,10 +573,11 @@ python preprocessed_data/main_preprocess_omics.py --base /path/to/data_root \
 
 ```bash
 # Multi-seed (recommended, 3 × 5 = 15 runs)
-python run_multi_seed.py --config configs/config_minimal_graph_relaxed_topk32.yaml          # GI
-python run_multi_seed.py --config configs/config_brca.yaml     # BRCA
-python run_multi_seed.py --config configs/config_ucec.yaml     # UCEC
-python run_multi_seed.py --config configs/config_kipan.yaml    # KIPAN
+python run_multi_seed.py --config configs/config_minimal_graph_relaxed_topk32.yaml   # GI 5-class (baseline)
+python run_multi_seed.py --config configs/config_4class.yaml                          # GI 4-class
+python run_multi_seed.py --config configs/config_brca.yaml                            # BRCA
+python run_multi_seed.py --config configs/config_ucec.yaml                            # UCEC
+python run_multi_seed.py --config configs/config_gi_stad_only.yaml                    # STAD-only
 
 # Single-seed (debug)
 python train.py --config configs/config_minimal_graph_relaxed_topk32.yaml --seed 42
@@ -596,7 +595,7 @@ data:
 preprocessing:
   gene_top_k:  3500
   meth_top_k:  3500
-  mirna_top_k: 1881
+  mirna_top_k: 450
   feature_selection_method: "anova"
   val_size:    0.15
   cv_folds:    5
@@ -606,20 +605,19 @@ preprocessing:
   minority_classes: [1, 2, 4]
 
 graph:
-  emqtl_pval_threshold: 0.05
-  max_edges_per_node:   20
-  max_coregulation_edges: 10
-  ppi_score_threshold:  700
-  use_ppi: true
-  use_reactome: true
-  use_mirna: true
-  use_mirna_family: true
+  emqtl_pval_threshold:  0.05
+  max_edges_per_node:    12     # cap đối xứng cả 2 đầu emQTL
+  ppi_score_threshold:   800
+  max_targets_per_mirna: 50
+  use_emqtl: true               # CpG ↔ Gene
+  use_ppi:   true               # Gene ↔ Gene
+  use_mirna: true               # miRNA ↔ Gene
 
 model:
-  hidden_dim: 64
+  hidden_dim: 96
   gat_heads:  4
   gat_layers: 2
-  gat_dropout: 0.5
+  gat_dropout: 0.3
   topk_seq:    32
   ca_heads:    4
   ca_dropout:  0.4
@@ -669,15 +667,13 @@ logging:
 
 | Nguồn                      | Dùng cho cạnh                                                | File                                                             |
 | -------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- |
-| **emQTL (TCGA)**           | CpG → Gene                                                   | `TCGA_emQTL_<COHORT>.txt` (cohort-specific)                      |
-| **STRING v12**             | Gene ↔ Gene PPI                                              | `9606.protein.links.v12.0.txt`, `9606.protein.aliases.v12.0.txt` |
-| **Reactome**               | Gene ↔ Gene co-pathway                                       | `Ensembl2Reactome_All_Levels.txt`                                |
-| **miRTarBase**             | miRNA → Gene                                                 | `hsa_MTI.csv`                                                    |
-| **TargetScan**             | miRNA ↔ miRNA family                                         | `miR_Family_Info.txt`                                            |
-| **HGNC**                   | Ensembl → gene symbol                                        | `hgnc_complete_set.txt`                                          |
-| **GENCODE v36**            | Lọc protein-coding genes                                     | `gencode.v36.annotation.gtf`                                     |
-| **Chen et al. 2013**       | Loại CpG cross-reactive                                      | `cross_reactive_probes.txt`                                      |
-| **Illumina 450K manifest** | Loại CpG trên chrX/Y (tiền xử lý) + CpG island edges (graph) | `HumanMethylation450_manifest.csv`                               |
+| **emQTL (TCGA)**           | CpG → Gene (cạnh đồ thị)         | `TCGA_emQTL_<COHORT>.txt` (cohort-specific)                      |
+| **STRING v12**             | Gene ↔ Gene PPI (cạnh đồ thị)    | `9606.protein.links.v12.0.txt`, `9606.protein.aliases.v12.0.txt` |
+| **miRTarBase**             | miRNA → Gene (cạnh đồ thị)       | `hsa_MTI.csv`                                                    |
+| **HGNC**                   | Ensembl → gene symbol            | `hgnc_complete_set.txt`                                          |
+| **GENCODE v36**            | Lọc protein-coding genes         | `gencode.v36.annotation.gtf`                                     |
+| **Chen et al. 2013**       | Loại CpG cross-reactive          | `cross_reactive_probes.txt`                                      |
+| **Illumina 450K manifest** | Loại CpG trên chrX/Y (tiền xử lý) | `HumanMethylation450_manifest.csv`                               |
 
 ---
 
@@ -688,9 +684,7 @@ logging:
 - **Entmax 1.5**: Peters et al., *Sparse Sequence-to-Sequence Models*, ACL 2019.
 - **Focal Loss**: Lin et al., *Focal Loss for Dense Object Detection*, CVPR 2017.
 - **STRING v12**: Szklarczyk et al., NAR 2023.
-- **Reactome**: Jassal et al., NAR 2020.
 - **miRTarBase 2022**: Huang et al., NAR 2022.
-- **TargetScan v8**: McGeary et al., Science 2019.
 - **TCGA emQTL**: methylation–expression QTL pre-computed cho từng cohort TCGA.
 
 ---

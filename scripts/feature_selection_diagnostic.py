@@ -7,7 +7,7 @@ thay vì đoán top-K. Trả lời 2 câu hỏi:
   2. Bao nhiêu feature thực sự "có ý nghĩa" (pass FDR Benjamini-Hochberg)?
 
 Chạy (trên Kaggle, nơi có data):
-    python scripts/feature_selection_diagnostic.py --config configs/config.yaml
+    python scripts/feature_selection_diagnostic.py --config configs/config_minimal_graph_relaxed_topk32.yaml
     python scripts/feature_selection_diagnostic.py --config configs/config_4class.yaml
 
 Lưu ý: tính F-score trên TOÀN BỘ mẫu đã filter (không split) — đây là diagnostic
@@ -135,7 +135,7 @@ def analyze_modality(name: str, X: np.ndarray, y: np.ndarray, current_top_k, bri
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/config.yaml")
+    ap.add_argument("--config", default="configs/config_minimal_graph_relaxed_topk32.yaml")
     ap.add_argument("--brief", action="store_true", help="In gọn 1 dòng/modality (số FDR + gợi ý K).")
     args = ap.parse_args()
 

@@ -4,7 +4,7 @@ run_multi_seed.py
 Wrapper chạy train.py với nhiều seeds, aggregate kết quả mean ± std.
 
 Usage:
-    python run_multi_seed.py --config configs/config.yaml
+    python run_multi_seed.py --config configs/config_minimal_graph_relaxed_topk32.yaml
     python run_multi_seed.py --config configs/config_brca.yaml --seeds 42 123 2024
     python run_multi_seed.py --config configs/config_ucec.yaml --output-dir results/ucec_multiseed
 
@@ -274,6 +274,60 @@ def main():
             avg = np.mean(vals) if vals else 0
             name = class_names[int(cls)] if int(cls) < len(class_names) else f"class {cls}"
             print(f"| {cls} ({name}) | " + " | ".join(cells) + f" | {avg:.4f} |")
+        print()
+
+    # Per-class Precision
+    seed_per_class_p = {seed: seed_summaries[seed].get("per_class_precision", {}) for seed in seeds_done}
+    all_classes_p = (sorted(set().union(*[d.keys() for d in seed_per_class_p.values()]), key=int)
+                      if seed_per_class_p else [])
+    if all_classes_p:
+        print("**Per-class Precision (mean across seeds):**")
+        print()
+        print("| Class | " + " | ".join(f"Seed {s}" for s in seeds_done) + " | Avg |")
+        print("|-------|" + "|".join("---" for _ in seeds_done) + "|------|")
+        for cls in all_classes_p:
+            vals, cells = [], []
+            for seed in seeds_done:
+                if cls in seed_per_class_p[seed]:
+                    v = seed_per_class_p[seed][cls]["mean"]
+                    vals.append(v)
+                    cells.append(f"{v:.4f}")
+                else:
+                    cells.append("—")
+            avg = np.mean(vals) if vals else 0
+            name = class_names[int(cls)] if int(cls) < len(class_names) else f"class {cls}"
+            print(f"| {cls} ({name}) | " + " | ".join(cells) + f" | {avg:.4f} |")
+        print()
+
+    # Classifier ablation: MLP hiện tại vs Logistic Regression / SVM / Random Forest
+    seed_clf = {seed: seed_summaries[seed].get("classifier_ablation", {}) for seed in seeds_done}
+    clf_names = sorted(set().union(*[d.keys() for d in seed_clf.values()])) if seed_clf else []
+    if clf_names:
+        print("**Classifier ablation — Macro F1 trên cùng z_fused (mean across seeds):**")
+        print()
+        print("| Bộ phân loại | " + " | ".join(f"Seed {s}" for s in seeds_done) + " | Avg |")
+        print("|---|" + "|".join("---" for _ in seeds_done) + "|------|")
+        mlp_vals, mlp_cells = [], []
+        for seed in seeds_done:
+            v = seed_summaries[seed].get("metrics", {}).get("f1", {}).get("mean")
+            if v is not None:
+                mlp_vals.append(v)
+                mlp_cells.append(f"{v:.4f}")
+            else:
+                mlp_cells.append("—")
+        avg = np.mean(mlp_vals) if mlp_vals else 0
+        print(f"| mlp (hiện tại) | " + " | ".join(mlp_cells) + f" | {avg:.4f} |")
+        for name in clf_names:
+            vals, cells = [], []
+            for seed in seeds_done:
+                d = seed_clf[seed].get(name, {}).get("f1")
+                if d is not None:
+                    vals.append(d["mean"])
+                    cells.append(f"{d['mean']:.4f}")
+                else:
+                    cells.append("—")
+            avg = np.mean(vals) if vals else 0
+            print(f"| {name} | " + " | ".join(cells) + f" | {avg:.4f} |")
         print()
 
     # Attention stats

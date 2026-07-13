@@ -166,7 +166,7 @@ def get_edge_stats(graph) -> dict:
     """Per-relation edge counts from a HeteroData graph.
 
     Returns dict with `per_relation`, `total_edges`, `n_relations_total`,
-    `n_relations_active`. Use to audit which of the 13 declared relations
+    `n_relations_active`. Use to audit which of the 8 declared relations
     actually carry edges in a given fold.
     """
     per_rel = {}

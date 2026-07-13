@@ -81,14 +81,8 @@ def run_fold(cfg, fold_pkg, ckpt_path, device, topn):
 
     meth, mirna = test.meth, test.mirna       # (N, n_feat) đã z-score
     K = cfg["model"].get("topk_seq", 32)
-
-    # Nếu bật modality_summary thì token đầu là summary -> bỏ để khớp top-K.
-    def _strip_summary(a, k_real):
-        return a[:, 1:] if a.shape[1] == k_real + 1 else a
     k_meth = min(K, meth.shape[1])
     k_mir = min(K, mirna.shape[1])
-    cpg_attn = _strip_summary(cpg_attn, k_meth)
-    mir_attn = _strip_summary(mir_attn, k_mir)
 
     rows = []
     for i in range(len(labels)):

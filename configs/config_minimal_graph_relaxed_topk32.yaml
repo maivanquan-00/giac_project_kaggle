@@ -75,6 +75,7 @@ logging:
   save_dir: "/kaggle/working/checkpoints_minimal_relaxed_topk32/"
   log_interval: 5
   print_classification_report: true
+  run_classifier_ablation: true
 
 interpretability:
   top_k_features: 50
